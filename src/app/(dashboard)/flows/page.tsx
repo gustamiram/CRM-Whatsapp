@@ -245,7 +245,7 @@ export default function FlowsPage() {
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl bg-slate-900 text-slate-100">
+        <DialogContent className="max-w-3xl bg-slate-900 text-slate-100">
           <DialogHeader>
             <DialogTitle>Create a new flow</DialogTitle>
             <DialogDescription className="text-slate-400">
@@ -254,11 +254,11 @@ export default function FlowsPage() {
           </DialogHeader>
 
           {templates.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <p className="text-xs uppercase tracking-wide text-slate-500">
                 Start from a template
               </p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {templates.map((t) => {
                   const Icon = TEMPLATE_ICONS[t.icon] ?? FileText;
                   return (
@@ -267,17 +267,17 @@ export default function FlowsPage() {
                       type="button"
                       onClick={() => handleUseTemplate(t.slug)}
                       disabled={creating}
-                      className="flex flex-col gap-2 rounded-lg border border-slate-800 bg-slate-950 p-3 text-left transition-colors hover:border-violet-500/40 hover:bg-slate-800 disabled:opacity-50"
+                      className="flex flex-col gap-2.5 rounded-lg border border-slate-800 bg-slate-950 p-4 text-left transition-colors hover:border-violet-500/40 hover:bg-slate-800 disabled:opacity-50"
                     >
-                      <Icon className="h-4 w-4 text-violet-400" />
-                      <span className="text-sm font-medium text-white">
+                      <Icon className="h-5 w-5 text-violet-400" />
+                      <span className="text-sm font-semibold text-white">
                         {t.name}
                       </span>
-                      <span className="line-clamp-3 text-xs text-slate-400">
+                      <span className="text-xs leading-relaxed text-slate-400">
                         {t.description}
                       </span>
-                      <span className="mt-auto text-[10px] text-slate-500">
-                        {t.node_count} nodes
+                      <span className="mt-auto border-t border-slate-800 pt-2 text-[11px] text-slate-500">
+                        {t.node_count} {t.node_count === 1 ? "node" : "nodes"}
                       </span>
                     </button>
                   );
@@ -286,7 +286,7 @@ export default function FlowsPage() {
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-2 border-t border-slate-800 pt-4">
             <p className="text-xs uppercase tracking-wide text-slate-500">
               Or start blank
             </p>
