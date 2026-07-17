@@ -414,8 +414,24 @@ export async function ingestInboundMessage(input: InboundMessage): Promise<void>
   }
   if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created');
   if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message');
+  // Awaited — not fire-and-forget. This function runs inside the
+  // webhook route's `after()`, which only keeps the serverless
+  // function alive for promises it can see chained off what it
+  // awaits. A detached `runAutomationsForTrigger(...).catch(...)`
+  // here is invisible to that guarantee: Vercel can freeze/terminate
+  // the instance the moment the awaited chain above resolves, killing
+  // the automation mid-run. That produced exactly this symptom — an
+  // `automation_logs` row inserted with `status: 'success'` and
+  // `steps_executed: []` (the initial insert lands fast) but nothing
+  // after it ever runs, so a configured `send_message` step never
+  // actually sends and `execution_count` never increments. See
+  // issue: "Welcome Message" automation logged success with 0 steps.
+  // `runAutomationsForTrigger` is documented to never throw (all
+  // errors are caught and logged internally), so awaiting it here
+  // adds no new failure mode — it only makes the existing safety net
+  // actually cover automations too.
   for (const triggerType of automationTriggers) {
-    runAutomationsForTrigger({
+    await runAutomationsForTrigger({
       accountId,
       triggerType,
       contactId: contactRecord.id,
