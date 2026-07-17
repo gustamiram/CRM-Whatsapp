@@ -175,6 +175,13 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
+  // TEMP diagnostic — capture the raw shape of a `history` backfill
+  // event (undocumented in the spec) so ingestion can be built against
+  // the real payload instead of guessing. Remove once confirmed.
+  if (body.event === 'history' || (body as { messages?: unknown }).messages) {
+    console.log('[uazapi-webhook][DIAG history payload]', JSON.stringify(body).slice(0, 4000))
+  }
+
   // Ack fast, process after (same rationale as the Meta webhook).
   after(async () => {
     try {

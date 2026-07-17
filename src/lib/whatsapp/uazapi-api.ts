@@ -179,7 +179,12 @@ export async function setWebhook(args: SetWebhookArgs): Promise<void> {
     body: {
       enabled: true,
       url: args.url,
-      events: args.events ?? ['messages', 'connection'],
+      // 'history' is the 7-day backfill UAZAPI sends after a fresh QR
+      // connect — without it, any conversation that was already in
+      // progress before the connection looks brand new to us, and
+      // `first_inbound_message` fires on a customer's next reply even
+      // though it's nowhere close to their first message.
+      events: args.events ?? ['messages', 'connection', 'history'],
       excludeMessages: args.excludeMessages ?? ['wasSentByApi'],
     },
   });
