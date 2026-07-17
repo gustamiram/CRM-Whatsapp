@@ -26,6 +26,15 @@ interface UazapiMessage {
   messageid?: string
   chatid?: string
   sender?: string
+  /**
+   * The sender's phone-number-based JID, resolved by WhatsApp — only
+   * present once WhatsApp has linked this contact's LID to a real
+   * number. When absent, `sender` (and/or `sender_lid`) is a LID, not
+   * a dialable phone number.
+   */
+  sender_pn?: string
+  /** The sender's original LID, when WhatsApp assigned one. */
+  sender_lid?: string
   senderName?: string
   isGroup?: boolean
   fromMe?: boolean
@@ -76,6 +85,40 @@ function mediaUrlOf(msg: UazapiMessage): string | null {
   const url = msg.mediaUrl || msg.file || msg.content
   if (typeof url === 'string' && /^https?:\/\//i.test(url)) return url
   return null
+}
+
+function extractJidUser(jid: string): string {
+  return jid.split('@')[0].split(':')[0]
+}
+
+/**
+ * Resolve the sender's identity from a UAZAPI message.
+ *
+ * WhatsApp is rolling out LIDs (privacy identifiers) that replace the
+ * real phone number for some senders. UAZAPI surfaces this as
+ * `sender_pn` (the real phone-number JID, only present once WhatsApp
+ * has resolved it) separately from `sender`/`sender_lid` (the LID).
+ * Naively reading the digits out of `sender` — regardless of whether
+ * its JID suffix is `@s.whatsapp.net` (real number) or `@lid` (not a
+ * dialable number) — produces a contact with a bogus "phone" that
+ * every outbound send then fails against.
+ *
+ * Returns `waLid` set only when no real phone number is known — that's
+ * the signal the send path uses to target `{waLid}@lid` instead of a
+ * phone-based JID (see providers/uazapi.ts).
+ */
+function resolveSender(msg: UazapiMessage): { phone: string; waLid: string | null } {
+  const senderJid = String(msg.sender ?? '')
+  const isLidJid = senderJid.endsWith('@lid')
+  const resolvedPn = msg.sender_pn || (!isLidJid ? senderJid : '')
+
+  if (resolvedPn) {
+    return { phone: normalizePhone(extractJidUser(resolvedPn)), waLid: null }
+  }
+
+  const lid = msg.sender_lid || extractJidUser(senderJid)
+  const normalizedLid = normalizePhone(lid)
+  return { phone: normalizedLid, waLid: normalizedLid || null }
 }
 
 export async function POST(
@@ -139,8 +182,7 @@ async function processUazapiEvent(
   if (msg.fromMe) return
   if (msg.isGroup) return
 
-  const senderJid = String(msg.sender ?? '')
-  const senderPhone = normalizePhone(senderJid.split('@')[0].split(':')[0])
+  const { phone: senderPhone, waLid: senderWaLid } = resolveSender(msg)
   if (!senderPhone) return
 
   const providerMessageId = msg.messageid || msg.id || ''
@@ -157,6 +199,7 @@ async function processUazapiEvent(
       accountId,
       configOwnerUserId,
       senderPhone,
+      senderWaLid,
       senderName: msg.senderName || senderPhone,
       providerMessageId,
       timestampMs,
@@ -187,6 +230,7 @@ async function processUazapiEvent(
     accountId,
     configOwnerUserId,
     senderPhone,
+    senderWaLid,
     senderName: msg.senderName || senderPhone,
     providerMessageId,
     timestampMs,

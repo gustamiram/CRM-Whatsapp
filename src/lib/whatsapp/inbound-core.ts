@@ -31,6 +31,14 @@ export interface InboundMessage {
   configOwnerUserId: string;
   /** Sender's phone, digits only (already normalized). */
   senderPhone: string;
+  /**
+   * WhatsApp LID (Linked ID), when the sender is only identifiable this
+   * way — no real phone number was resolvable (UAZAPI only). Persisted
+   * onto the contact so the send path can route via `{lid}@lid` instead
+   * of the (bogus, LID-derived) `senderPhone`. Null/absent for Meta and
+   * for any contact WhatsApp gave a real phone number for.
+   */
+  senderWaLid?: string | null;
   /** Display name from the provider (falls back to the phone). */
   senderName: string;
   /** Provider message id → persisted as messages.message_id. */
@@ -173,22 +181,33 @@ async function findOrCreateContact(
   accountId: string,
   configOwnerUserId: string,
   phone: string,
-  name: string
+  name: string,
+  waLid?: string | null
 ): Promise<ContactOutcome | null> {
   const existingContact = await findExistingContact(supabaseAdmin(), accountId, phone);
   if (existingContact) {
-    if (name && name !== existingContact.name) {
-      await supabaseAdmin()
-        .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
-        .eq('id', existingContact.id);
+    const updates: Record<string, unknown> = {};
+    if (name && name !== existingContact.name) updates.name = name;
+    // Backfill wa_lid on an existing contact once WhatsApp gives us one
+    // (e.g. a contact created before this field existed, or one whose
+    // LID wasn't known on an earlier message).
+    if (waLid && waLid !== existingContact.wa_lid) updates.wa_lid = waLid;
+    if (Object.keys(updates).length > 0) {
+      updates.updated_at = new Date().toISOString();
+      await supabaseAdmin().from('contacts').update(updates).eq('id', existingContact.id);
     }
     return { contact: existingContact, wasCreated: false };
   }
 
   const { data: newContact, error: createError } = await supabaseAdmin()
     .from('contacts')
-    .insert({ account_id: accountId, user_id: configOwnerUserId, phone, name: name || phone })
+    .insert({
+      account_id: accountId,
+      user_id: configOwnerUserId,
+      phone,
+      name: name || phone,
+      wa_lid: waLid ?? null,
+    })
     .select()
     .single();
 
@@ -257,6 +276,7 @@ export async function ingestInboundMessage(input: InboundMessage): Promise<void>
     accountId,
     configOwnerUserId,
     senderPhone,
+    senderWaLid,
     senderName,
     providerMessageId,
     timestampMs,
@@ -272,7 +292,8 @@ export async function ingestInboundMessage(input: InboundMessage): Promise<void>
     accountId,
     configOwnerUserId,
     senderPhone,
-    senderName
+    senderName,
+    senderWaLid
   );
   if (!contactOutcome) return;
   const contactRecord = contactOutcome.contact;

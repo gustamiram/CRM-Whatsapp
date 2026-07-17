@@ -5,6 +5,7 @@ import {
   engineSendInteractiveList,
 } from '@/lib/flows/meta-send'
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils'
+import { resolveSendTarget } from '@/lib/whatsapp/wa-target'
 import { supabaseAdmin } from './admin-client'
 
 // ------------------------------------------------------------
@@ -112,7 +113,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // new tenancy column.
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, wa_lid')
     .eq('id', input.contactId)
     .eq('account_id', input.accountId)
     .maybeSingle()
@@ -124,6 +125,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   if (!isValidE164(sanitized)) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
+  const sendTarget = resolveSendTarget(contact, sanitized)
 
   const { data: config, error: configErr } = await db
     .from('whatsapp_config')
@@ -138,12 +140,12 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   const { messageId: waMessageId, usedPhone: workingPhone } =
     input.kind === 'template'
       ? await provider.sendTemplate({
-          to: sanitized,
+          to: sendTarget,
           templateName: input.templateName,
           language: input.language,
           params: input.params,
         })
-      : await provider.sendText({ to: sanitized, text: input.text })
+      : await provider.sendText({ to: sendTarget, text: input.text })
 
   if (workingPhone !== sanitized) {
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)

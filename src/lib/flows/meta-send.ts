@@ -6,6 +6,7 @@ import type {
 import { getProvider } from '@/lib/whatsapp/providers'
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils'
+import { resolveSendTarget } from '@/lib/whatsapp/wa-target'
 import { supabaseAdmin } from './admin-client'
 
 // ------------------------------------------------------------
@@ -60,7 +61,7 @@ export async function engineSendText(
 
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, wa_lid')
     .eq('id', args.contactId)
     .eq('account_id', args.accountId)
     .maybeSingle()
@@ -72,6 +73,7 @@ export async function engineSendText(
   if (!isValidE164(sanitized)) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
+  const sendTarget = resolveSendTarget(contact, sanitized)
 
   const { data: config, error: configErr } = await db
     .from('whatsapp_config')
@@ -84,7 +86,7 @@ export async function engineSendText(
 
   const provider = getProvider(config)
   const { messageId: waMessageId, usedPhone: workingPhone } =
-    await provider.sendText({ to: sanitized, text: args.text })
+    await provider.sendText({ to: sendTarget, text: args.text })
 
   if (workingPhone !== sanitized) {
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
@@ -144,7 +146,7 @@ export async function engineSendMedia(
 
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, wa_lid')
     .eq('id', args.contactId)
     .eq('account_id', args.accountId)
     .maybeSingle()
@@ -156,6 +158,7 @@ export async function engineSendMedia(
   if (!isValidE164(sanitized)) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
+  const sendTarget = resolveSendTarget(contact, sanitized)
 
   const { data: config, error: configErr } = await db
     .from('whatsapp_config')
@@ -169,7 +172,7 @@ export async function engineSendMedia(
   const provider = getProvider(config)
   const { messageId: waMessageId, usedPhone: workingPhone } =
     await provider.sendMedia({
-      to: sanitized,
+      to: sendTarget,
       kind: args.kind,
       link: args.link,
       caption: args.caption,
@@ -273,7 +276,7 @@ async function sendInteractiveViaMeta(
   // Migration 017 moved both tables to account-scoped tenancy.
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, wa_lid')
     .eq('id', input.contactId)
     .eq('account_id', input.accountId)
     .maybeSingle()
@@ -285,6 +288,7 @@ async function sendInteractiveViaMeta(
   if (!isValidE164(sanitized)) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
+  const sendTarget = resolveSendTarget(contact, sanitized)
 
   const { data: config, error: configErr } = await db
     .from('whatsapp_config')
@@ -299,14 +303,14 @@ async function sendInteractiveViaMeta(
   const { messageId: waMessageId, usedPhone: workingPhone } =
     input.kind === 'buttons'
       ? await provider.sendInteractiveButtons({
-          to: sanitized,
+          to: sendTarget,
           bodyText: input.bodyText,
           buttons: input.buttons,
           headerText: input.headerText,
           footerText: input.footerText,
         })
       : await provider.sendInteractiveList({
-          to: sanitized,
+          to: sendTarget,
           bodyText: input.bodyText,
           buttonLabel: input.buttonLabel,
           sections: input.sections,

@@ -1,0 +1,25 @@
+-- ============================================================
+-- 038: WhatsApp LID (Linked ID) support for contacts.
+--
+-- WhatsApp is rolling out LIDs — a privacy identifier used in place of
+-- the real phone number for some senders (business-linked numbers,
+-- privacy-restricted accounts, or before WhatsApp has synced a
+-- phone-number mapping for that contact). UAZAPI's inbound webhook
+-- payload exposes this as `sender_lid` alongside `sender_pn` (the real
+-- phone-number JID, only present once WhatsApp has resolved it).
+--
+-- Before this migration, the webhook parser blindly read the numeric
+-- part of `sender` as a phone number — when WhatsApp only gave us a
+-- LID, that produced a contact with a bogus "phone" (a LID looks like a
+-- long digit string but isn't dialable), and every outbound send to
+-- that contact failed on UAZAPI's side ("no LID found ... from server"
+-- — UAZAPI tried to resolve it as a phone-based JID).
+--
+-- `wa_lid`, when set, is the contact's real LID. The UAZAPI provider
+-- sends to `{wa_lid}@lid` instead of the phone-based JID for these
+-- contacts (UAZAPI's /send/* `number` field accepts either form). Null
+-- for every Meta contact and for UAZAPI contacts WhatsApp resolved a
+-- real phone number for.
+-- ============================================================
+
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS wa_lid TEXT;

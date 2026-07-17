@@ -31,6 +31,7 @@ import {
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
+import { resolveSendTarget } from '@/lib/whatsapp/wa-target';
 import type { MessageTemplate } from '@/types';
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
 
@@ -235,6 +236,11 @@ export async function sendMessageToConversation(
       400
     );
   }
+  // UAZAPI-only: when WhatsApp never resolved a real phone number for
+  // this contact (only a LID), target `{wa_lid}@lid` instead of the
+  // (bogus, LID-derived) sanitizedPhone. No-op for Meta — contact.wa_lid
+  // is always null there.
+  const sendTarget = resolveSendTarget(contact, sanitizedPhone);
 
   // WhatsApp config, account-scoped.
   const { data: config, error: configError } = await db
@@ -334,7 +340,7 @@ export async function sendMessageToConversation(
   try {
     if (messageType === 'template') {
       sendResult = await provider.sendTemplate({
-        to: sanitizedPhone,
+        to: sendTarget,
         templateName: templateName!,
         language: templateLanguage || 'en_US',
         template: templateRow ?? undefined,
@@ -344,7 +350,7 @@ export async function sendMessageToConversation(
       });
     } else if (isMediaKind) {
       sendResult = await provider.sendMedia({
-        to: sanitizedPhone,
+        to: sendTarget,
         kind: messageType as MediaKind,
         link: mediaUrl!,
         caption: contentText || undefined,
@@ -356,7 +362,7 @@ export async function sendMessageToConversation(
       sendResult =
         p.kind === 'buttons'
           ? await provider.sendInteractiveButtons({
-              to: sanitizedPhone,
+              to: sendTarget,
               bodyText: p.body,
               headerText: p.header || undefined,
               footerText: p.footer || undefined,
@@ -364,7 +370,7 @@ export async function sendMessageToConversation(
               contextMessageId,
             })
           : await provider.sendInteractiveList({
-              to: sanitizedPhone,
+              to: sendTarget,
               bodyText: p.body,
               buttonLabel: p.button_label,
               headerText: p.header || undefined,
@@ -374,7 +380,7 @@ export async function sendMessageToConversation(
             });
     } else {
       sendResult = await provider.sendText({
-        to: sanitizedPhone,
+        to: sendTarget,
         text: contentText!,
         contextMessageId,
       });
