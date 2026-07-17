@@ -1717,5 +1717,8 @@
       "reindexTooltip": "Re-embed all documents (e.g. after adding an embeddings key)",
       "loading": "Loading…"
     }
+  },
+  "LanguageSwitcher": {
+    "label": "Change language"
   }
 }
