@@ -18,17 +18,29 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api';
-import { decrypt } from '@/lib/whatsapp/encryption';
-import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
-  isRecipientNotAllowedError,
-} from '@/lib/whatsapp/phone-utils';
+import { getProvider, type ProviderConfigRow } from '@/lib/whatsapp/providers';
+import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
+
+/**
+ * Render a Meta template's body to plain text by substituting {{n}}
+ * placeholders with positional params. Used for the UAZAPI provider,
+ * which has no template concept — a broadcast there sends the rendered
+ * body as a normal text message.
+ */
+function renderTemplateBodyText(
+  template: MessageTemplate | null,
+  params: string[]
+): string {
+  const body = template?.body_text ?? '';
+  const rendered = body.replace(
+    /\{\{\s*(\d+)\s*\}\}/g,
+    (_, n: string) => params[Number(n) - 1] ?? ''
+  );
+  return rendered.trim() || params.join(' ').trim();
+}
 
 /** Thrown by createBroadcast on a caller-visible failure; route maps it. */
 export class BroadcastError extends Error {
@@ -66,8 +78,9 @@ export interface BroadcastPlan {
   broadcastId: string;
   templateName: string;
   templateLanguage: string;
-  phoneNumberId: string;
-  accessToken: string;
+  /** The account's whatsapp_config row — deliverBroadcast builds the
+   *  provider from it (Meta template send, or UAZAPI rendered-text). */
+  config: ProviderConfigRow;
   templateRow: MessageTemplate | null;
   planned: PlannedRecipient[];
   /** Phones rejected up front (invalid E.164) — counted as failed. */
@@ -123,7 +136,6 @@ export async function createBroadcast(
       400
     );
   }
-  const accessToken = decrypt(config.access_token);
 
   // Template row (once) for header/button components; guard a
   // malformed local row rather than N identical opaque failures.
@@ -238,8 +250,7 @@ export async function createBroadcast(
     broadcastId: broadcast.id,
     templateName,
     templateLanguage,
-    phoneNumberId: config.phone_number_id,
-    accessToken,
+    config: config as ProviderConfigRow,
     templateRow,
     planned,
     rejected,
@@ -265,31 +276,32 @@ export async function deliverBroadcast(
 ): Promise<void> {
   let sentCount = 0;
 
+  // Build the provider once for the whole fan-out. Meta sends the
+  // approved template (and owns its phone-variant retry internally);
+  // UAZAPI has no templates, so it sends the rendered body as text.
+  const provider = getProvider(plan.config);
+  const isUazapi = provider.kind === 'uazapi';
+
   for (const recipient of plan.planned) {
-    const variants = phoneVariants(recipient.phone);
     let sentMessageId: string | null = null;
     let lastError: string | null = null;
 
-    for (const variant of variants) {
-      try {
-        const result = await sendTemplateMessage({
-          phoneNumberId: plan.phoneNumberId,
-          accessToken: plan.accessToken,
-          to: variant,
-          templateName: plan.templateName,
-          language: plan.templateLanguage,
-          template: plan.templateRow ?? undefined,
-          params: recipient.params,
-        });
-        sentMessageId = result.messageId;
-        lastError = null;
-        break;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        lastError = message;
-        // Only a "recipient not allowed" error is worth another variant.
-        if (!isRecipientNotAllowedError(message)) break;
-      }
+    try {
+      const result = isUazapi
+        ? await provider.sendText({
+            to: recipient.phone,
+            text: renderTemplateBodyText(plan.templateRow, recipient.params),
+          })
+        : await provider.sendTemplate({
+            to: recipient.phone,
+            templateName: plan.templateName,
+            language: plan.templateLanguage,
+            template: plan.templateRow ?? undefined,
+            params: recipient.params,
+          });
+      sentMessageId = result.messageId;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : 'Unknown error';
     }
 
     if (sentMessageId) {

@@ -266,12 +266,32 @@ export interface MessageReaction {
   created_at: string;
 }
 
+/** Which WhatsApp transport an account uses. `meta` is the official
+ *  Cloud API (phone_number_id + access_token); `uazapi` is the
+ *  unofficial QR-code provider (instance token). One active per account
+ *  — see the `provider` discriminator on whatsapp_config (migration 037). */
+export type WhatsAppProviderKind = 'meta' | 'uazapi';
+
+/** UAZAPI instance connection state (mirrors the API's own states). */
+export type UazapiStatus =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'hibernated';
+
 export interface WhatsAppConfig {
   id: string;
   user_id: string;
-  phone_number_id: string;
+  /** Tenancy key (migration 017). Optional here because older reads
+   *  select only Meta columns; every row has it at the DB level. */
+  account_id?: string;
+  /** Active provider for this account. Defaults to 'meta' for every
+   *  row that predates migration 037. */
+  provider: WhatsAppProviderKind;
+  // ---- Meta (official Cloud API) — null on a UAZAPI row ----
+  phone_number_id?: string;
   waba_id?: string;
-  access_token: string;
+  access_token?: string;
   verify_token?: string;
   status: 'connected' | 'disconnected';
   connected_at?: string;
@@ -285,6 +305,21 @@ export interface WhatsAppConfig {
   subscribed_apps_at?: string;
   /** Last error from /register; cleared on success. */
   last_registration_error?: string;
+  // ---- UAZAPI (unofficial QR provider) — null on a Meta row ----
+  /** Server base URL, e.g. https://api.uazapi.com */
+  uazapi_base_url?: string;
+  /** AES-256-GCM-encrypted admin token (creates/manages the instance). */
+  uazapi_admin_token?: string;
+  /** Instance id from /instance/create. */
+  uazapi_instance_id?: string;
+  /** AES-256-GCM-encrypted per-instance token (connect/send/webhook auth). */
+  uazapi_instance_token?: string;
+  /** Unguessable token that identifies this account in the inbound
+   *  webhook URL path (UAZAPI does not sign payloads). */
+  uazapi_webhook_secret?: string;
+  uazapi_status?: UazapiStatus;
+  uazapi_profile_name?: string;
+  uazapi_phone?: string;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)

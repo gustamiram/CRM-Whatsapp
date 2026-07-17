@@ -354,6 +354,9 @@ export async function POST(request: Request) {
     // store the credentials and the error so the UI can guide the
     // user through a retry.
     const baseRow = {
+      // Saving Meta credentials makes Meta the active provider for this
+      // account (a UAZAPI row switches back here). See migration 037.
+      provider: 'meta' as const,
       phone_number_id,
       waba_id: waba_id || null,
       access_token: encryptedAccessToken,
