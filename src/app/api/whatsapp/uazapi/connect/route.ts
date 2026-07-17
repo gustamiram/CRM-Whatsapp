@@ -55,23 +55,30 @@ export async function POST(request: Request) {
     const webhookUrl = row.uazapi_webhook_secret
       ? uazapiWebhookUrl(request, row.uazapi_webhook_secret)
       : null;
-    const registerWebhook = async () => {
-      if (!webhookUrl) return;
+    // Returns whether the registration actually succeeded — a caller
+    // that swallows this (as an earlier version of this route did)
+    // leaves the user believing they're connected while UAZAPI is
+    // silently posting inbound events at a stale/unreachable URL, with
+    // no error anywhere to explain the missing messages.
+    const registerWebhook = async (): Promise<{ ok: boolean; error?: string }> => {
+      if (!webhookUrl) return { ok: false, error: 'No webhook secret on this account yet.' };
       try {
         await setWebhook({ baseUrl, instanceToken, url: webhookUrl });
+        return { ok: true };
       } catch (err) {
-        // Non-fatal — surface later, but let the flow continue.
-        console.warn('[uazapi/connect] setWebhook failed:', err);
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn('[uazapi/connect] setWebhook failed:', message);
+        return { ok: false, error: message };
       }
     };
 
     // If the instance is already connected, don't start a fresh QR flow.
     // Just (re-)register the webhook — this is the path a user takes after
-    // pointing NEXT_PUBLIC_SITE_URL at a public tunnel to re-point the
-    // inbound URL without re-scanning.
+    // pointing NEXT_PUBLIC_SITE_URL at a public tunnel/domain to re-point
+    // the inbound URL without re-scanning.
     const current = await getInstanceStatus({ baseUrl, instanceToken });
     if (current.status === 'connected') {
-      await registerWebhook();
+      const webhookResult = await registerWebhook();
       await supabase
         .from('whatsapp_config')
         .update({
@@ -82,13 +89,20 @@ export async function POST(request: Request) {
           updated_at: new Date().toISOString(),
         })
         .eq('account_id', accountId);
-      return NextResponse.json({ status: 'connected', connected: true, qrcode: null });
+      return NextResponse.json({
+        status: 'connected',
+        connected: true,
+        qrcode: null,
+        webhook_url: webhookUrl,
+        webhook_registered: webhookResult.ok,
+        webhook_error: webhookResult.error ?? null,
+      });
     }
 
     // Register the inbound webhook before connecting so no early message
     // is missed (excludeMessages defaults to ['wasSentByApi'] to avoid
     // echo loops), then start the QR flow.
-    await registerWebhook();
+    const webhookResult = await registerWebhook();
     const snapshot = await connectInstance({ baseUrl, instanceToken });
 
     await supabase
@@ -103,6 +117,9 @@ export async function POST(request: Request) {
       status: snapshot.status ?? 'connecting',
       qrcode: snapshot.qrcode ?? null,
       paircode: snapshot.paircode ?? null,
+      webhook_url: webhookUrl,
+      webhook_registered: webhookResult.ok,
+      webhook_error: webhookResult.error ?? null,
     });
   } catch (err) {
     if (err instanceof Error && !('status' in err)) {

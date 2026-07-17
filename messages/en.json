@@ -1516,7 +1516,8 @@
         "qrScanHint": "Open WhatsApp → Settings → Linked devices → Link a device, then scan this code.",
         "regenerateQr": "Regenerate QR",
         "connect": "Connect",
-        "disconnect": "Disconnect"
+        "disconnect": "Disconnect",
+        "webhookRegisterError": "Connected to WhatsApp, but registering the webhook failed: {error}. Inbound messages will not arrive until this is fixed — check your server URL and try Connect again."
       }
     },
     "sections": {

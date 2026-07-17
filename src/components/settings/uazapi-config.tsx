@@ -172,8 +172,24 @@ export function UazapiConfig() {
         return;
       }
       setStatus((data.status as UazapiStatus) || 'connecting');
+
+      // The webhook registration is what actually makes inbound messages
+      // arrive — a connected instance with a failed/skipped registration
+      // looks identical to a fully working one in the status banner, so
+      // surface it explicitly rather than letting it fail silently.
+      if (data.webhook_registered === false) {
+        toast.error(
+          t('uazapi.webhookRegisterError', {
+            error: data.webhook_error || 'unknown error',
+          }),
+          { duration: 12000 }
+        );
+      }
+
       if (data.connected || data.status === 'connected') {
-        toast.success(t('uazapi.connected'));
+        if (data.webhook_registered !== false) {
+          toast.success(t('uazapi.connected'));
+        }
         await loadConfig();
         return;
       }
