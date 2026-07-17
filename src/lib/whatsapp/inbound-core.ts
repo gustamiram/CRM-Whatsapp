@@ -462,3 +462,121 @@ export async function ingestInboundMessage(input: InboundMessage): Promise<void>
     text: contentText,
   });
 }
+
+/** A message the connected number's owner sent directly from their
+ *  phone (not through this CRM). */
+export interface AgentSentMessage {
+  accountId: string;
+  configOwnerUserId: string;
+  /** The customer's phone, digits only — resolved from the chat/JID,
+   *  NOT the message's `sender` (a `fromMe` event reports our own
+   *  identity there, not the customer's). */
+  customerPhone: string;
+  customerName?: string;
+  providerMessageId: string;
+  timestampMs: number;
+  type: string;
+  contentText: string | null;
+  mediaUrl: string | null;
+}
+
+/**
+ * Record a message sent directly from the connected WhatsApp phone
+ * app — not through this CRM. UAZAPI/Baileys still delivers these as
+ * `fromMe: true` webhook events (after `wasSentByApi` rules out
+ * echoes of our own API sends). Without this, replying from the phone
+ * reaches the customer fine but never appears in the CRM thread, and
+ * a teammate reading the inbox has no idea the conversation moved on.
+ *
+ * `sender_type: 'agent'` matches how a CRM-initiated send is recorded
+ * (see send-message.ts) — from the thread's point of view this reads
+ * identically to an agent reply, which is what it is.
+ */
+export async function ingestAgentSentMessage(input: AgentSentMessage): Promise<void> {
+  const {
+    accountId,
+    configOwnerUserId,
+    customerPhone,
+    customerName,
+    providerMessageId,
+    timestampMs,
+    type,
+    contentText,
+    mediaUrl,
+  } = input;
+
+  const contactOutcome = await findOrCreateContact(
+    accountId,
+    configOwnerUserId,
+    customerPhone,
+    customerName || customerPhone
+  );
+  if (!contactOutcome) return;
+  const contactRecord = contactOutcome.contact;
+
+  const convResult = await findOrCreateConversation(
+    accountId,
+    configOwnerUserId,
+    contactRecord.id
+  );
+  if (!convResult) return;
+  const conversation = convResult.conversation;
+
+  // Defense in depth against double-recording: if `wasSentByApi` ever
+  // misses on the UAZAPI side, this would otherwise duplicate a
+  // message our own send path already persisted (message_id isn't
+  // unique in this schema, so a plain insert wouldn't catch it).
+  const { data: existing } = await supabaseAdmin()
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', conversation.id)
+    .eq('message_id', providerMessageId)
+    .maybeSingle();
+  if (existing) return;
+
+  const contentType = mapContentType(type);
+
+  const { error: msgError } = await supabaseAdmin().from('messages').insert({
+    conversation_id: conversation.id,
+    sender_type: 'agent',
+    content_type: contentType,
+    content_text: contentText,
+    media_url: mediaUrl,
+    message_id: providerMessageId,
+    status: 'sent',
+    created_at: new Date(timestampMs).toISOString(),
+  });
+  if (msgError) {
+    console.error('[inbound] Error inserting agent-sent (phone) message:', msgError);
+    return;
+  }
+
+  await supabaseAdmin()
+    .from('conversations')
+    .update({
+      last_message_text: contentText || `[${type}]`,
+      last_message_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', conversation.id);
+
+  // Mirror send-message.ts: the agent stepping in — even from their
+  // own phone — is the strongest "yield, human is here" signal.
+  try {
+    const { error: pauseErr } = await supabaseAdmin()
+      .from('flow_runs')
+      .update({
+        status: 'paused_by_agent',
+        ended_at: new Date().toISOString(),
+        end_reason: 'agent_replied',
+      })
+      .eq('account_id', accountId)
+      .eq('contact_id', contactRecord.id)
+      .eq('status', 'active');
+    if (pauseErr) {
+      console.error('[flows] pause-on-agent-send (phone) failed:', pauseErr.message);
+    }
+  } catch (err) {
+    console.error('[flows] pause-on-agent-send (phone) threw:', err);
+  }
+}

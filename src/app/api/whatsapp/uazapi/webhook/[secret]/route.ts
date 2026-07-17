@@ -1,7 +1,7 @@
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
-import { ingestInboundMessage } from '@/lib/whatsapp/inbound-core'
+import { ingestInboundMessage, ingestAgentSentMessage } from '@/lib/whatsapp/inbound-core'
 
 // Inbound processing can fan out to the flows/automations/AI engines.
 export const maxDuration = 60
@@ -38,6 +38,13 @@ interface UazapiMessage {
   senderName?: string
   isGroup?: boolean
   fromMe?: boolean
+  /** True when this message was sent through UAZAPI's own send/* API —
+   *  i.e. by this CRM. We register the webhook with
+   *  excludeMessages:['wasSentByApi'] so these shouldn't normally
+   *  arrive at all; this field is a second, message-level check so a
+   *  registration-level miss can't duplicate a message we already
+   *  recorded when we sent it. */
+  wasSentByApi?: boolean
   messageType?: string
   messageTimestamp?: number
   text?: string
@@ -121,6 +128,18 @@ function resolveSender(msg: UazapiMessage): { phone: string; waLid: string | nul
   return { phone: normalizedLid, waLid: normalizedLid || null }
 }
 
+/**
+ * Resolve the customer's phone from a message's `chatid` — "the chat
+ * this message belongs to", independent of who sent it. Used only for
+ * `fromMe` events: `sender` there reports OUR OWN identity, not the
+ * customer's, so resolving from `sender` would (mis)file the message
+ * under a contact matching our own number.
+ */
+function resolveChatCustomerPhone(msg: UazapiMessage): string {
+  const chatJid = String(msg.chatid ?? '')
+  return normalizePhone(extractJidUser(chatJid))
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ secret: string }> }
@@ -175,12 +194,24 @@ async function processUazapiEvent(
 ) {
   const msg = pickMessage(body)
   if (!msg) return
-
-  // Skip our own / agent-from-phone sends and group messages. The
-  // webhook is also registered with excludeMessages:['wasSentByApi'],
-  // so API sends never reach here — this guards the phone-side ones.
-  if (msg.fromMe) return
   if (msg.isGroup) return
+
+  // `fromMe` covers two different situations that need opposite
+  // handling:
+  //   - wasSentByApi=true  → this CRM sent it (via /send/*); already
+  //     recorded when we sent it. The webhook is registered with
+  //     excludeMessages:['wasSentByApi'] so these shouldn't normally
+  //     even arrive — this is a second, message-level check.
+  //   - wasSentByApi=false → the connected number's owner replied
+  //     directly from the WhatsApp phone app, not through the CRM.
+  //     That reaches the customer fine but, without this, never shows
+  //     up in the CRM thread — record it as an agent message.
+  if (msg.fromMe) {
+    if (!msg.wasSentByApi) {
+      await handleAgentSentFromPhone(msg, accountId, configOwnerUserId)
+    }
+    return
+  }
 
   const { phone: senderPhone, waLid: senderWaLid } = resolveSender(msg)
   if (!senderPhone) return
@@ -240,5 +271,46 @@ async function processUazapiEvent(
     interactiveReplyId,
     replyToExternalId: msg.quoted || null,
     reaction: null,
+  })
+}
+
+/**
+ * A `fromMe` message that wasn't sent via our API — the connected
+ * number's owner replied directly from the phone. Record it in the
+ * customer's thread (resolved via `chatid`, not `sender`) so it shows
+ * up in the CRM instead of only existing on the phone.
+ */
+async function handleAgentSentFromPhone(
+  msg: UazapiMessage,
+  accountId: string,
+  configOwnerUserId: string
+) {
+  const customerPhone = resolveChatCustomerPhone(msg)
+  if (!customerPhone) return
+
+  const providerMessageId = msg.messageid || msg.id || ''
+  const rawTs = Number(msg.messageTimestamp ?? 0)
+  const timestampMs = rawTs > 0 ? (rawTs < 1e12 ? rawTs * 1000 : rawTs) : Date.now()
+  const type = mapUazapiType(msg.messageType)
+
+  // Reactions and interactive taps from our own side aren't meaningful
+  // to mirror as a message row — nothing in this schema models "agent
+  // reacted" or "agent tapped a button".
+  if (type === 'reaction' || type === 'interactive') return
+
+  const isMedia =
+    type === 'image' || type === 'video' || type === 'audio' || type === 'document'
+  const mediaUrl = isMedia ? mediaUrlOf(msg) : null
+  const contentText = msg.caption || msg.text || null
+
+  await ingestAgentSentMessage({
+    accountId,
+    configOwnerUserId,
+    customerPhone,
+    providerMessageId,
+    timestampMs,
+    type,
+    contentText,
+    mediaUrl,
   })
 }
