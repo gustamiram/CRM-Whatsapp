@@ -580,3 +580,119 @@ export async function ingestAgentSentMessage(input: AgentSentMessage): Promise<v
     console.error('[flows] pause-on-agent-send (phone) threw:', err);
   }
 }
+
+/** One message from a provider's history backfill (UAZAPI's 7-day
+ *  sync on a fresh QR connect, or an explicit history-sync request). */
+export interface HistoryMessage {
+  accountId: string;
+  configOwnerUserId: string;
+  /** Resolved from the chat/JID — history batches mix both directions
+   *  (customer + agent), and `chatid` identifies the conversation
+   *  regardless of which side sent a given message. */
+  customerPhone: string;
+  senderName?: string;
+  /** True when this particular message was sent by the connected
+   *  number (fromMe), false when the customer sent it. */
+  isFromAgent: boolean;
+  providerMessageId: string;
+  timestampMs: number;
+  type: string;
+  contentText: string | null;
+  mediaUrl: string | null;
+}
+
+/**
+ * Persist one message from a history backfill — deliberately inert
+ * otherwise: no Flows, no automations, no AI auto-reply, no public
+ * webhook fan-out.
+ *
+ * These are messages from BEFORE this CRM connection existed. Routing
+ * them through the normal real-time pipeline would fire
+ * `first_inbound_message`/`new_contact_created` on a conversation that
+ * was actually already in progress — the "Welcome Message sent to an
+ * existing contact" bug this function exists to prevent. The one job
+ * here is to backfill context so the CRM thread isn't missing
+ * everything that happened before the connection.
+ */
+export async function ingestHistoryMessage(input: HistoryMessage): Promise<void> {
+  const {
+    accountId,
+    configOwnerUserId,
+    customerPhone,
+    senderName,
+    isFromAgent,
+    providerMessageId,
+    timestampMs,
+    type,
+    contentText,
+    mediaUrl,
+  } = input;
+
+  const contactOutcome = await findOrCreateContact(
+    accountId,
+    configOwnerUserId,
+    customerPhone,
+    senderName || customerPhone
+  );
+  if (!contactOutcome) return;
+  const contactRecord = contactOutcome.contact;
+
+  const convResult = await findOrCreateConversation(
+    accountId,
+    configOwnerUserId,
+    contactRecord.id
+  );
+  if (!convResult) return;
+  const conversation = convResult.conversation;
+
+  // Skip anything we've already recorded — history batches routinely
+  // overlap with messages the real-time path already captured.
+  const { data: existing } = await supabaseAdmin()
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', conversation.id)
+    .eq('message_id', providerMessageId)
+    .maybeSingle();
+  if (existing) return;
+
+  const contentType = mapContentType(type);
+  const createdAtIso = new Date(timestampMs).toISOString();
+
+  const { error: msgError } = await supabaseAdmin().from('messages').insert({
+    conversation_id: conversation.id,
+    sender_type: isFromAgent ? 'agent' : 'customer',
+    content_type: contentType,
+    content_text: contentText,
+    media_url: mediaUrl,
+    message_id: providerMessageId,
+    status: isFromAgent ? 'sent' : 'delivered',
+    created_at: createdAtIso,
+  });
+  if (msgError) {
+    console.error('[inbound] Error inserting history message:', msgError);
+    return;
+  }
+
+  // Only advance the conversation's preview if this backfilled message
+  // is actually more recent than what's there — a history batch can
+  // arrive out of order, or entirely predate messages the real-time
+  // path already recorded (and already used to set the preview).
+  const { data: convRow } = await supabaseAdmin()
+    .from('conversations')
+    .select('last_message_at')
+    .eq('id', conversation.id)
+    .maybeSingle();
+  const currentLastAt = convRow?.last_message_at
+    ? new Date(convRow.last_message_at as string).getTime()
+    : 0;
+  if (timestampMs > currentLastAt) {
+    await supabaseAdmin()
+      .from('conversations')
+      .update({
+        last_message_text: contentText || `[${type}]`,
+        last_message_at: createdAtIso,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', conversation.id);
+  }
+}

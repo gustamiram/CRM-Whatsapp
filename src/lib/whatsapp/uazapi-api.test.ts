@@ -83,7 +83,7 @@ describe('uazapi-api', () => {
     expect(url).toBe('https://demo.uazapi.com/webhook');
     const body = JSON.parse(init.body as string);
     expect(body.excludeMessages).toContain('wasSentByApi');
-    expect(body.events).toEqual(['messages', 'connection']);
+    expect(body.events).toEqual(['messages', 'connection', 'history']);
     expect(body.url).toContain('/uazapi/webhook/secret');
   });
 

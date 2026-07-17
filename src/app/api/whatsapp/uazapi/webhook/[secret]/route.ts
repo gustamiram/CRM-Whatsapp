@@ -1,7 +1,11 @@
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
-import { ingestInboundMessage, ingestAgentSentMessage } from '@/lib/whatsapp/inbound-core'
+import {
+  ingestInboundMessage,
+  ingestAgentSentMessage,
+  ingestHistoryMessage,
+} from '@/lib/whatsapp/inbound-core'
 
 // Inbound processing can fan out to the flows/automations/AI engines.
 export const maxDuration = 60
@@ -175,13 +179,6 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // TEMP diagnostic — capture the raw shape of a `history` backfill
-  // event (undocumented in the spec) so ingestion can be built against
-  // the real payload instead of guessing. Remove once confirmed.
-  if (body.event === 'history' || (body as { messages?: unknown }).messages) {
-    console.log('[uazapi-webhook][DIAG history payload]', JSON.stringify(body).slice(0, 4000))
-  }
-
   // Ack fast, process after (same rationale as the Meta webhook).
   after(async () => {
     try {
@@ -194,11 +191,92 @@ export async function POST(
   return NextResponse.json({ status: 'received' }, { status: 200 })
 }
 
+/**
+ * Detect + extract a history-backfill batch — UAZAPI's 7-day sync sent
+ * after a fresh QR connect (or an explicit /message/history-sync call),
+ * as opposed to a single real-time message event.
+ *
+ * The exact webhook envelope for `history` isn't documented in UAZAPI's
+ * OpenAPI spec (it only documents the REST endpoints we call, not what
+ * arrives at our URL), so this reads defensively: an explicit
+ * `event`/`type` field naming 'history' is the strongest signal: if the
+ * server sends one, trust it even for a single-message batch. Absent
+ * that, a `messages` array with more than one entry is still a strong
+ * signal (real-time delivery is always one message per POST) — but not
+ * with exactly one entry, since that's indistinguishable from the
+ * normal single-message shape and must not be treated as a silent
+ * inert backfill.
+ */
+function extractHistoryMessages(body: Record<string, unknown>): UazapiMessage[] | null {
+  const eventName = String(body.event ?? body.type ?? '').toLowerCase()
+  const rawMessages = (body as { messages?: unknown }).messages
+  if (!Array.isArray(rawMessages)) return null
+  if (eventName === 'history') return rawMessages as UazapiMessage[]
+  if (rawMessages.length > 1) return rawMessages as UazapiMessage[]
+  return null
+}
+
+/**
+ * Persist one message from a history backfill. Deliberately inert
+ * otherwise — no Flows, automations, AI auto-reply, or public webhook
+ * fan-out. These are messages from before this CRM connection existed;
+ * routing them through the real-time pipeline would fire
+ * `first_inbound_message`/`new_contact_created` on a conversation that
+ * was actually already in progress (see: "Welcome Message sent to an
+ * existing contact").
+ */
+async function handleHistoryMessage(
+  msg: UazapiMessage,
+  accountId: string,
+  configOwnerUserId: string
+) {
+  if (msg.isGroup) return
+  // History mixes both directions in one batch — chatid identifies the
+  // conversation regardless of who sent a given message (see
+  // resolveChatCustomerPhone's doc comment on the fromMe path below).
+  const customerPhone = resolveChatCustomerPhone(msg)
+  if (!customerPhone) return
+
+  const providerMessageId = msg.messageid || msg.id || ''
+  if (!providerMessageId) return
+  const rawTs = Number(msg.messageTimestamp ?? 0)
+  const timestampMs = rawTs > 0 ? (rawTs < 1e12 ? rawTs * 1000 : rawTs) : Date.now()
+  const type = mapUazapiType(msg.messageType)
+  if (type === 'reaction' || type === 'interactive') return
+
+  const isMedia =
+    type === 'image' || type === 'video' || type === 'audio' || type === 'document'
+  const mediaUrl = isMedia ? mediaUrlOf(msg) : null
+  const contentText = msg.caption || msg.text || null
+
+  await ingestHistoryMessage({
+    accountId,
+    configOwnerUserId,
+    customerPhone,
+    senderName: msg.senderName || undefined,
+    isFromAgent: Boolean(msg.fromMe),
+    providerMessageId,
+    timestampMs,
+    type,
+    contentText,
+    mediaUrl,
+  })
+}
+
 async function processUazapiEvent(
   body: Record<string, unknown>,
   accountId: string,
   configOwnerUserId: string
 ) {
+  const historyBatch = extractHistoryMessages(body)
+  if (historyBatch) {
+    console.log(`[uazapi-webhook] history batch: ${historyBatch.length} message(s)`)
+    for (const historyMsg of historyBatch) {
+      await handleHistoryMessage(historyMsg, accountId, configOwnerUserId)
+    }
+    return
+  }
+
   const msg = pickMessage(body)
   if (!msg) return
   if (msg.isGroup) return
