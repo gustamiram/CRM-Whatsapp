@@ -96,6 +96,13 @@ vi.mock("./meta-send", () => ({
   engineSendInteractive: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
 }));
 
+const { engineSendMediaMock } = vi.hoisted(() => ({
+  engineSendMediaMock: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
+}));
+vi.mock("@/lib/flows/meta-send", () => ({
+  engineSendMedia: engineSendMediaMock,
+}));
+
 import { runAutomationsForTrigger, triggerMatches } from "./engine";
 import type { Automation } from "@/types";
 
@@ -109,6 +116,7 @@ beforeEach(() => {
   h.state.fromCalls = [];
   h.state.updateCalls = [];
   h.state.upsertCalls = [];
+  engineSendMediaMock.mockClear();
 });
 
 describe("runAutomationsForTrigger — tenant isolation", () => {
@@ -252,6 +260,68 @@ describe("send_webhook — SSRF guard (GHSA-8jqh-598v-rfxc)", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("send_media step", () => {
+  it("sends the configured media via engineSendMedia", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [
+      mediaStep({ media_kind: "image", media_url: "https://example.com/img.png" }),
+    ];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: { conversation_id: "conv-1" },
+    });
+
+    expect(engineSendMediaMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: ACCOUNT,
+        conversationId: "conv-1",
+        contactId: "c1",
+        kind: "image",
+        link: "https://example.com/img.png",
+      }),
+    );
+  });
+
+  it("sends audio with no caption/filename (native voice-note contract)", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [automationWithUpdateStep()];
+    h.state.steps = [
+      mediaStep({ media_kind: "audio", media_url: "https://example.com/note.ogg" }),
+    ];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "new_message_received",
+      contactId: "c1",
+      context: { conversation_id: "conv-1" },
+    });
+
+    expect(engineSendMediaMock).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "audio", link: "https://example.com/note.ogg" }),
+    );
+  });
+});
+
+function mediaStep(config: {
+  media_kind: "image" | "document" | "audio";
+  media_url: string;
+  filename?: string;
+  caption?: string;
+}) {
+  return {
+    id: "s1",
+    automation_id: "a1",
+    step_type: "send_media",
+    position: 0,
+    parent_step_id: null,
+    step_config: config,
+  };
+}
 
 function webhookStep(url: string) {
   return {

@@ -834,7 +834,8 @@
         "wait": "Esperar",
         "condition": "Condición (Si/Si no)",
         "send_webhook": "Enviar webhook",
-        "close_conversation": "Cerrar conversación"
+        "close_conversation": "Cerrar conversación",
+        "send_media": "Enviar multimedia"
       },
       "triggers": {
         "new_message_received": {
@@ -971,7 +972,23 @@
         "matchType": "Tipo de coincidencia",
         "matchContains": "Contiene",
         "matchExact": "Exacta",
-        "closeConversationHint": "Establece el estado de la conversación como \"cerrada\". No requiere configuración."
+        "closeConversationHint": "Establece el estado de la conversación como \"cerrada\". No requiere configuración.",
+        "mediaKindLabel": "Tipo de contenido",
+        "mediaKinds": {
+          "image": "Imagen",
+          "document": "Documento",
+          "audio": "Audio (nota de voz)"
+        },
+        "fileLabel": "Archivo",
+        "audioHint": "Se envía sin leyenda ni nombre de archivo para que WhatsApp lo muestre como una nota de voz nativa, no como un adjunto reenviado.",
+        "filenameLabel": "Nombre del archivo",
+        "captionLabel": "Leyenda",
+        "removeFile": "Quitar archivo",
+        "uploading": "Subiendo…",
+        "clickToUpload": "Haz clic para subir",
+        "fileTooLarge": "El archivo es demasiado grande — el límite es {limit} MB.",
+        "fileUploaded": "Archivo subido.",
+        "uploadFailed": "Error al subir el archivo."
       }
     }
   },
@@ -1718,6 +1735,44 @@
       "reindex": "Reindexar",
       "reindexTooltip": "Vuelve a generar embeddings de todos los documentos (p. ej. después de agregar una clave de embeddings)",
       "loading": "Cargando…"
+    },
+    "aiMediaRules": {
+      "title": "Respuestas por palabra clave (multimedia)",
+      "description": "Cuando el mensaje del cliente coincide con una palabra clave, se envía un documento/imagen más una nota de voz en lugar de una respuesta de texto de la IA.",
+      "loading": "Cargando…",
+      "noRules": "Aún no hay reglas — agrega una abajo.",
+      "inactive": "Inactiva",
+      "edit": "Editar",
+      "delete": "Eliminar",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "p. ej. Lista de precios",
+      "keywordsLabel": "Palabras clave",
+      "keywordsPlaceholder": "precio, catálogo, menú",
+      "matchTypeLabel": "Tipo de coincidencia",
+      "matchContains": "Contiene",
+      "matchExact": "Exacta",
+      "caseSensitiveLabel": "Distinguir mayúsculas/minúsculas",
+      "documentLabel": "Documento / imagen",
+      "kindImage": "Imagen",
+      "kindDocument": "Documento (PDF, etc.)",
+      "clickToUploadDocument": "Haz clic para subir el documento/imagen",
+      "audioLabel": "Audio (nota de voz)",
+      "clickToUploadAudio": "Haz clic para subir el audio",
+      "audioHint": "Se envía sin leyenda para que se muestre como una nota de voz nativa, no como un adjunto reenviado.",
+      "activeLabel": "Activa",
+      "cancel": "Cancelar",
+      "saveRule": "Guardar regla",
+      "addRule": "Agregar regla",
+      "loadFailed": "Error al cargar las reglas de multimedia.",
+      "saveFailed": "Error al guardar la regla.",
+      "saveSuccessNew": "Regla creada.",
+      "saveSuccessUpdate": "Regla actualizada.",
+      "removeSuccess": "Regla eliminada.",
+      "removeFailed": "Error al eliminar la regla.",
+      "nameKeywordsRequired": "Se requieren el nombre y al menos una palabra clave.",
+      "filesRequired": "Se requieren un documento/imagen y un archivo de audio.",
+      "fileTooLarge": "El archivo es demasiado grande — el límite es {limit} MB.",
+      "uploadFailed": "Error al subir el archivo."
     }
   },
   "LanguageSwitcher": {

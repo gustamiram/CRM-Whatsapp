@@ -8,9 +8,13 @@ const h = vi.hoisted(() => ({
   retrieveKnowledge: vi.fn(),
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
+  findMatchingAiMediaRule: vi.fn(),
+  sendAiMediaRule: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
-    autoResponders: [] as { id: string }[],
+    // Full-ish automation rows — real `triggerMatches` (not mocked)
+    // evaluates these against `trigger_type` + `trigger_config`.
+    autoResponders: [] as Record<string, unknown>[],
     claim: true as boolean,
     updatePayload: null as Record<string, unknown> | null,
     rpcCalls: [] as { name: string; args: unknown }[],
@@ -24,18 +28,21 @@ vi.mock('./config', () => ({ loadAiConfig: h.loadAiConfig }))
 vi.mock('./context', () => ({ buildConversationContext: h.buildConversationContext }))
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
+vi.mock('./media-rules', () => ({
+  findMatchingAiMediaRule: h.findMatchingAiMediaRule,
+  sendAiMediaRule: h.sendAiMediaRule,
+}))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
     from: (table: string) => {
       if (table === 'automations') {
-        // .select().eq().eq().in().limit() → active auto-responders
+        // .select('*').eq().eq().in() → candidate auto-responder rows;
+        // the real triggerMatches (not mocked) decides which count.
         const chain = {
           select: () => chain,
           eq: () => chain,
-          in: () => chain,
-          limit: () =>
-            Promise.resolve({ data: h.state.autoResponders, error: null }),
+          in: () => Promise.resolve({ data: h.state.autoResponders, error: null }),
         }
         return chain
       }
@@ -119,6 +126,8 @@ beforeEach(() => {
   h.retrieveKnowledge.mockResolvedValue([])
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
+  h.findMatchingAiMediaRule.mockResolvedValue(null)
+  h.sendAiMediaRule.mockResolvedValue(undefined)
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
@@ -143,11 +152,69 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(systemPrompt).toContain('Returns accepted within 30 days.')
   })
 
-  it('stands down when an active message-level automation exists', async () => {
-    h.state.autoResponders = [{ id: 'auto-1' }]
+  it('stands down when an active new_message_received automation exists (matches unconditionally)', async () => {
+    h.state.autoResponders = [
+      { id: 'auto-1', trigger_type: 'new_message_received', trigger_config: {} },
+    ]
     await dispatchInboundToAiReply(ARGS)
     expect(h.generateReply).not.toHaveBeenCalled()
     expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('does NOT stand down for a keyword_match automation whose keywords do not match this message', async () => {
+    h.state.autoResponders = [
+      {
+        id: 'auto-1',
+        trigger_type: 'keyword_match',
+        trigger_config: { keywords: ['refund'], match_type: 'contains' },
+      },
+    ]
+    await dispatchInboundToAiReply({ ...ARGS, triggerMessageText: 'hello there' })
+    expect(h.generateReply).toHaveBeenCalled()
+    expect(h.engineSendText).toHaveBeenCalled()
+  })
+
+  it('stands down for a keyword_match automation that matches this message', async () => {
+    h.state.autoResponders = [
+      {
+        id: 'auto-1',
+        trigger_type: 'keyword_match',
+        trigger_config: { keywords: ['refund'], match_type: 'contains' },
+      },
+    ]
+    await dispatchInboundToAiReply({ ...ARGS, triggerMessageText: 'I need a refund please' })
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('sends the matched AI media rule and skips LLM generation entirely', async () => {
+    h.findMatchingAiMediaRule.mockResolvedValue({
+      id: 'rule-1',
+      document_kind: 'image',
+      document_url: 'https://example.com/img.png',
+      audio_url: 'https://example.com/audio.ogg',
+    })
+    await dispatchInboundToAiReply({ ...ARGS, triggerMessageText: 'send me the price list' })
+    expect(h.sendAiMediaRule).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'rule-1' }),
+      expect.objectContaining({
+        accountId: 'acct-1',
+        conversationId: 'conv-1',
+        contactId: 'contact-1',
+      }),
+    )
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+    expect(h.state.rpcCalls).toEqual([
+      { name: 'claim_ai_reply_slot', args: { conversation_id: 'conv-1', max_replies: 3 } },
+    ])
+  })
+
+  it('does not send the media rule when the slot claim loses the race', async () => {
+    h.state.claim = false
+    h.findMatchingAiMediaRule.mockResolvedValue({ id: 'rule-1' })
+    await dispatchInboundToAiReply({ ...ARGS, triggerMessageText: 'price list please' })
+    expect(h.sendAiMediaRule).not.toHaveBeenCalled()
   })
 
   it('does not send when the atomic slot claim loses the race', async () => {

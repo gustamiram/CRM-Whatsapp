@@ -7,7 +7,10 @@ import { buildSystemPrompt } from './defaults'
 import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
+import { findMatchingAiMediaRule, sendAiMediaRule } from './media-rules'
 import { engineSendText } from '@/lib/flows/meta-send'
+import { triggerMatches } from '@/lib/automations/engine'
+import type { Automation } from '@/types'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
 interface DispatchArgs {
@@ -24,6 +27,10 @@ interface DispatchArgs {
    *  stands down and the newer message's own dispatch replies instead
    *  — with every message in context. */
   triggerProviderMessageId?: string | null
+  /** Raw text of the inbound message that triggered this dispatch. Used
+   *  to check the account's keyword → media rules (ai_media_rules)
+   *  before falling back to the LLM — see the media-rule check below. */
+  triggerMessageText?: string
 }
 
 /**
@@ -54,6 +61,7 @@ export async function dispatchInboundToAiReply(
     contactId,
     configOwnerUserId,
     triggerProviderMessageId,
+    triggerMessageText,
   } = args
 
   try {
@@ -105,18 +113,30 @@ export async function dispatchInboundToAiReply(
     // caller already excludes messages a Flow consumed. Message-level
     // automations (`new_message_received` / `keyword_match`) are
     // dispatched independently for this same inbound and may send their
-    // own reply, so if the account has any active one we stand down to
-    // avoid double-texting the customer. (Relationship triggers like
-    // `first_inbound_message` don't count — they're not per-message
-    // auto-responders.)
+    // own reply, so stand down when one actually matches this message
+    // (`triggerMatches` returns true unconditionally for
+    // `new_message_received`, same as before; for `keyword_match` it only
+    // matches when the keywords are actually present). This is a strict
+    // refinement of the previous "stand down if any such automation is
+    // merely active" check — it no longer mutes the bot account-wide for
+    // every message just because one unrelated keyword automation exists
+    // (e.g. a keyword-triggered media-send automation). (Relationship
+    // triggers like `first_inbound_message` don't count — they're not
+    // per-message auto-responders.)
     const { data: autoResponders } = await db
       .from('automations')
-      .select('id')
+      .select('*')
       .eq('account_id', accountId)
       .eq('is_active', true)
       .in('trigger_type', ['new_message_received', 'keyword_match'])
-      .limit(1)
-    if (autoResponders && autoResponders.length > 0) return
+    if (
+      autoResponders &&
+      (autoResponders as Automation[]).some((a) =>
+        triggerMatches(a, { message_text: triggerMessageText ?? '' }),
+      )
+    ) {
+      return
+    }
 
     const { data: conv, error: convErr } = await db
       .from('conversations')
@@ -129,6 +149,39 @@ export async function dispatchInboundToAiReply(
     // Cheap early-out; the authoritative cap check is the atomic claim
     // below (this read can race a concurrent inbound).
     if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
+
+    // AI Agents' own keyword → media rules (Settings > Agentes de IA,
+    // ai_media_rules — independent of the Automations module's
+    // send_media step type). Checked before the LLM path: a matching
+    // rule sends its document/image + voice note and skips generation
+    // entirely, so no LLM/embeddings call is spent when a deterministic
+    // rule already answers the message.
+    const matchedRule = await findMatchingAiMediaRule(
+      db,
+      accountId,
+      triggerMessageText ?? '',
+    )
+    if (matchedRule) {
+      const { data: claimed, error: claimErr } = await db.rpc(
+        'claim_ai_reply_slot',
+        {
+          conversation_id: conversationId,
+          max_replies: config.autoReplyMaxPerConversation,
+        },
+      )
+      if (claimErr) {
+        console.error('[ai auto-reply] claim_ai_reply_slot failed:', claimErr)
+        return
+      }
+      if (claimed !== true) return // lost the per-conversation cap race
+      await sendAiMediaRule(matchedRule, {
+        accountId,
+        userId: configOwnerUserId,
+        conversationId,
+        contactId,
+      })
+      return
+    }
 
     const messages = await buildConversationContext(db, conversationId)
     if (messages.length === 0) return

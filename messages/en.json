@@ -834,7 +834,8 @@
         "wait": "Wait",
         "condition": "Condition (If/Else)",
         "send_webhook": "Send Webhook",
-        "close_conversation": "Close Conversation"
+        "close_conversation": "Close Conversation",
+        "send_media": "Send Media"
       },
       "triggers": {
         "new_message_received": {
@@ -971,7 +972,23 @@
         "matchType": "Match type",
         "matchContains": "Contains",
         "matchExact": "Exact",
-        "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed."
+        "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed.",
+        "mediaKindLabel": "Media type",
+        "mediaKinds": {
+          "image": "Image",
+          "document": "Document",
+          "audio": "Audio (voice note)"
+        },
+        "fileLabel": "File",
+        "audioHint": "Sent with no caption/filename so WhatsApp renders it as a native voice note, not a forwarded-looking attachment.",
+        "filenameLabel": "Filename",
+        "captionLabel": "Caption",
+        "removeFile": "Remove file",
+        "uploading": "Uploading…",
+        "clickToUpload": "Click to upload",
+        "fileTooLarge": "File is too large — limit is {limit} MB.",
+        "fileUploaded": "File uploaded.",
+        "uploadFailed": "Upload failed."
       }
     }
   },
@@ -1718,6 +1735,44 @@
       "reindex": "Reindex",
       "reindexTooltip": "Re-embed all documents (e.g. after adding an embeddings key)",
       "loading": "Loading…"
+    },
+    "aiMediaRules": {
+      "title": "Keyword media replies",
+      "description": "When a customer message matches a keyword, send a document/image plus a voice note instead of an AI text reply.",
+      "loading": "Loading…",
+      "noRules": "No rules yet — add one below.",
+      "inactive": "Inactive",
+      "edit": "Edit",
+      "delete": "Delete",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Price list",
+      "keywordsLabel": "Keywords",
+      "keywordsPlaceholder": "price, catalog, menu",
+      "matchTypeLabel": "Match type",
+      "matchContains": "Contains",
+      "matchExact": "Exact",
+      "caseSensitiveLabel": "Case sensitive",
+      "documentLabel": "Document / image",
+      "kindImage": "Image",
+      "kindDocument": "Document (PDF, etc.)",
+      "clickToUploadDocument": "Click to upload the document/image",
+      "audioLabel": "Audio (voice note)",
+      "clickToUploadAudio": "Click to upload the audio",
+      "audioHint": "Sent with no caption so it renders as a native voice note, not a forwarded-looking attachment.",
+      "activeLabel": "Active",
+      "cancel": "Cancel",
+      "saveRule": "Save rule",
+      "addRule": "Add rule",
+      "loadFailed": "Failed to load media rules.",
+      "saveFailed": "Failed to save the rule.",
+      "saveSuccessNew": "Rule created.",
+      "saveSuccessUpdate": "Rule updated.",
+      "removeSuccess": "Rule removed.",
+      "removeFailed": "Failed to remove the rule.",
+      "nameKeywordsRequired": "Name and at least one keyword are required.",
+      "filesRequired": "Both a document/image and an audio file are required.",
+      "fileTooLarge": "File is too large — limit is {limit} MB.",
+      "uploadFailed": "Upload failed."
     }
   },
   "LanguageSwitcher": {

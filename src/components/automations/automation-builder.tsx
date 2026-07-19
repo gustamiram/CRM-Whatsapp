@@ -2,8 +2,10 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -33,6 +35,9 @@ import {
   ArrowUp,
   MousePointerClick,
   List,
+  Paperclip,
+  Upload,
+  X,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -40,11 +45,19 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/upload-media"
 import type {
   AccountMember,
   AutomationStepType,
@@ -102,6 +115,7 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   send_buttons: { label: "send_buttons", icon: MousePointerClick, border: "border-l-primary" },
   send_list: { label: "send_list", icon: List, border: "border-l-primary" },
   send_template: { label: "send_template", icon: FileText, border: "border-l-primary" },
+  send_media: { label: "send_media", icon: Paperclip, border: "border-l-primary" },
   add_tag: { label: "add_tag", icon: Tag, border: "border-l-primary" },
   remove_tag: { label: "remove_tag", icon: TagIcon, border: "border-l-primary" },
   assign_conversation: { label: "assign_conversation", icon: UserCheck, border: "border-l-primary" },
@@ -118,6 +132,7 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "send_buttons",
   "send_list",
   "send_template",
+  "send_media",
   "add_tag",
   "remove_tag",
   "assign_conversation",
@@ -171,6 +186,8 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return toStepConfig(blankListPayload())
     case "send_template":
       return { template_name: "", language: "en_US" }
+    case "send_media":
+      return { media_kind: "image", media_url: "", filename: "", caption: "" }
     case "add_tag":
     case "remove_tag":
       return { tag_id: "" }
@@ -616,6 +633,174 @@ function SendTemplateFields({
         )}
       </select>
     </FieldBlock>
+  )
+}
+
+// The bucket that already allow-lists audio (migration 023) — reused as-is
+// for image/document uploads too, rather than the audio-less flow-media
+// bucket, so one step type can send any of the three kinds.
+const AUTOMATION_MEDIA_BUCKET = "chat-media"
+
+const AUTOMATION_MEDIA_ACCEPT: Record<SendMediaCfg["media_kind"], string> = {
+  image: "image/png,image/jpeg,image/webp",
+  document:
+    "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain",
+  audio: "audio/ogg,audio/mpeg,audio/aac,audio/mp4,audio/amr",
+}
+
+interface SendMediaCfg {
+  media_kind: "image" | "document" | "audio"
+  media_url?: string
+  filename?: string
+  caption?: string
+}
+
+/** "send_media" step config form — upload once, kind picked up front
+ *  (changing kind clears the file, matching Flows' send_media node
+ *  since the bucket's per-kind MIME allow-list differs). Pair two of
+ *  these steps (document/image + audio) to send a file + voice note. */
+function SendMediaFields({
+  cfg,
+  onChange,
+  t,
+}: {
+  cfg: SendMediaCfg
+  onChange: (patch: Partial<SendMediaCfg>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const mediaKind = cfg.media_kind ?? "image"
+  const isDocument = mediaKind === "document"
+  const displayName = cfg.filename || (cfg.media_url ? cfg.media_url.split("/").pop() ?? "" : "")
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      const maxBytes = MEDIA_MAX_BYTES_BY_KIND[mediaKind]
+      if (file.size > maxBytes) {
+        toast.error(
+          t("config.fileTooLarge", { limit: (maxBytes / 1024 / 1024).toFixed(0) }),
+        )
+        return
+      }
+      setUploading(true)
+      try {
+        const { publicUrl } = await uploadAccountMedia(AUTOMATION_MEDIA_BUCKET, file)
+        onChange({ media_url: publicUrl, filename: file.name })
+        toast.success(t("config.fileUploaded"))
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : t("config.uploadFailed"))
+      } finally {
+        setUploading(false)
+      }
+    },
+    [mediaKind, onChange, t],
+  )
+
+  return (
+    <>
+      <FieldBlock label={t("config.mediaKindLabel")}>
+        <Select
+          value={mediaKind}
+          onValueChange={(v) =>
+            onChange({
+              media_kind: v as SendMediaCfg["media_kind"],
+              media_url: "",
+              filename: "",
+            })
+          }
+        >
+          <SelectTrigger className="bg-muted">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="image">{t("config.mediaKinds.image")}</SelectItem>
+            <SelectItem value="document">{t("config.mediaKinds.document")}</SelectItem>
+            <SelectItem value="audio">{t("config.mediaKinds.audio")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </FieldBlock>
+
+      {mediaKind === "audio" && (
+        <p className="mb-2 text-xs text-muted-foreground">{t("config.audioHint")}</p>
+      )}
+
+      <FieldBlock label={t("config.fileLabel")}>
+        {cfg.media_url ? (
+          <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs">
+            <Paperclip className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <a
+              href={cfg.media_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="min-w-0 flex-1 truncate text-foreground hover:underline"
+              title={displayName || cfg.media_url}
+            >
+              {displayName || cfg.media_url}
+            </a>
+            <button
+              type="button"
+              onClick={() => onChange({ media_url: "", filename: "" })}
+              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label={t("config.removeFile")}
+              disabled={uploading}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-border bg-card px-3 py-4 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {t("config.uploading")}
+              </>
+            ) : (
+              <>
+                <Upload className="h-3.5 w-3.5" />
+                {t("config.clickToUpload")}
+              </>
+            )}
+          </button>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={AUTOMATION_MEDIA_ACCEPT[mediaKind]}
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ""
+            if (file) void handleFile(file)
+          }}
+        />
+      </FieldBlock>
+
+      {!isDocument ? null : (
+        <FieldBlock label={t("config.filenameLabel")}>
+          <Input
+            value={cfg.filename ?? ""}
+            onChange={(e) => onChange({ filename: e.target.value })}
+            className="bg-muted text-foreground"
+          />
+        </FieldBlock>
+      )}
+
+      {mediaKind !== "audio" && (
+        <FieldBlock label={t("config.captionLabel")}>
+          <Input
+            value={cfg.caption ?? ""}
+            onChange={(e) => onChange({ caption: e.target.value })}
+            className="bg-muted text-foreground"
+          />
+        </FieldBlock>
+      )}
+    </>
   )
 }
 
@@ -1313,6 +1498,14 @@ function StepEditor({
           t={t}
         />
       )
+    case "send_media":
+      return (
+        <SendMediaFields
+          cfg={cfg as unknown as SendMediaCfg}
+          onChange={(patch) => set(patch as Record<string, unknown>)}
+          t={t}
+        />
+      )
     case "add_tag":
     case "remove_tag":
       return (
@@ -1515,6 +1708,11 @@ function previewFor(step: BuilderStep): string {
       return interactivePayloadPreviewText(asInteractive(step.step_config)) || "no body yet"
     case "send_template":
       return (step.step_config.template_name as string) || "pick a template"
+    case "send_media": {
+      const kind = (step.step_config.media_kind as string) ?? "image"
+      const name = (step.step_config.filename as string) || (step.step_config.media_url as string)
+      return name ? `${kind}: ${name}` : `${kind}: no file yet`
+    }
     case "wait":
       return `${step.step_config.amount ?? "?"} ${step.step_config.unit ?? ""}`
     case "condition":

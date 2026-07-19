@@ -834,7 +834,8 @@
         "wait": "Aguardar",
         "condition": "Condição (Se/Senão)",
         "send_webhook": "Enviar webhook",
-        "close_conversation": "Fechar conversa"
+        "close_conversation": "Fechar conversa",
+        "send_media": "Enviar mídia"
       },
       "triggers": {
         "new_message_received": {
@@ -971,7 +972,23 @@
         "matchType": "Tipo de correspondência",
         "matchContains": "Contém",
         "matchExact": "Exato",
-        "closeConversationHint": "Define o status da conversa como \"fechada\". Não é necessária configuração."
+        "closeConversationHint": "Define o status da conversa como \"fechada\". Não é necessária configuração.",
+        "mediaKindLabel": "Tipo de mídia",
+        "mediaKinds": {
+          "image": "Imagem",
+          "document": "Documento",
+          "audio": "Áudio (nota de voz)"
+        },
+        "fileLabel": "Arquivo",
+        "audioHint": "Enviado sem legenda/nome de arquivo para o WhatsApp renderizar como uma nota de voz nativa, não como um anexo encaminhado.",
+        "filenameLabel": "Nome do arquivo",
+        "captionLabel": "Legenda",
+        "removeFile": "Remover arquivo",
+        "uploading": "Enviando…",
+        "clickToUpload": "Clique para enviar",
+        "fileTooLarge": "Arquivo muito grande — limite de {limit} MB.",
+        "fileUploaded": "Arquivo enviado.",
+        "uploadFailed": "Falha ao enviar o arquivo."
       }
     }
   },
@@ -1718,6 +1735,44 @@
       "reindex": "Reindexar",
       "reindexTooltip": "Reindexar todos os documentos (ex.: após adicionar uma chave de embeddings)",
       "loading": "Carregando…"
+    },
+    "aiMediaRules": {
+      "title": "Respostas por palavra-chave (mídia)",
+      "description": "Quando a mensagem do cliente bater com uma palavra-chave, envia um documento/imagem mais uma nota de voz em vez de uma resposta de texto da IA.",
+      "loading": "Carregando…",
+      "noRules": "Nenhuma regra ainda — adicione uma abaixo.",
+      "inactive": "Inativa",
+      "edit": "Editar",
+      "delete": "Excluir",
+      "nameLabel": "Nome",
+      "namePlaceholder": "ex.: Tabela de preços",
+      "keywordsLabel": "Palavras-chave",
+      "keywordsPlaceholder": "preço, catálogo, cardápio",
+      "matchTypeLabel": "Tipo de correspondência",
+      "matchContains": "Contém",
+      "matchExact": "Exata",
+      "caseSensitiveLabel": "Diferenciar maiúsculas/minúsculas",
+      "documentLabel": "Documento / imagem",
+      "kindImage": "Imagem",
+      "kindDocument": "Documento (PDF, etc.)",
+      "clickToUploadDocument": "Clique para enviar o documento/imagem",
+      "audioLabel": "Áudio (nota de voz)",
+      "clickToUploadAudio": "Clique para enviar o áudio",
+      "audioHint": "Enviado sem legenda para ser renderizado como nota de voz nativa, não como um anexo encaminhado.",
+      "activeLabel": "Ativa",
+      "cancel": "Cancelar",
+      "saveRule": "Salvar regra",
+      "addRule": "Adicionar regra",
+      "loadFailed": "Falha ao carregar as regras de mídia.",
+      "saveFailed": "Falha ao salvar a regra.",
+      "saveSuccessNew": "Regra criada.",
+      "saveSuccessUpdate": "Regra atualizada.",
+      "removeSuccess": "Regra removida.",
+      "removeFailed": "Falha ao remover a regra.",
+      "nameKeywordsRequired": "Nome e pelo menos uma palavra-chave são obrigatórios.",
+      "filesRequired": "É necessário um documento/imagem e um arquivo de áudio.",
+      "fileTooLarge": "Arquivo muito grande — limite de {limit} MB.",
+      "uploadFailed": "Falha ao enviar o arquivo."
     }
   },
   "LanguageSwitcher": {

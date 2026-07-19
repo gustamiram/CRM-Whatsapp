@@ -27,7 +27,10 @@ const MEDIA_KIND_TO_UAZAPI: Record<MediaKind, UazapiMediaType> = {
   image: 'image',
   video: 'video',
   document: 'document',
-  audio: 'audio',
+  // 'ptt' (push-to-talk), not 'audio' — UAZAPI renders plain 'audio' as a
+  // generic/forwarded-looking attachment. 'ptt' is what produces a native
+  // waveform voice-note bubble, matching Meta's audio-kind behavior.
+  audio: 'ptt',
 };
 
 /** Meta buttons → UAZAPI `choices` (`"title|id"` encodes a reply button). */

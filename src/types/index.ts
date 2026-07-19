@@ -486,6 +486,7 @@ export type AutomationStepType =
   | 'send_buttons'
   | 'send_list'
   | 'send_template'
+  | 'send_media'
   | 'add_tag'
   | 'remove_tag'
   | 'assign_conversation'
@@ -543,6 +544,20 @@ export interface SendTemplateStepConfig {
   template_name: string;
   language?: string;
   variables?: Record<string, string>;
+}
+
+/**
+ * `send_media` sends one file (image / document / audio). `audio` with no
+ * caption/filename renders as a native WhatsApp voice note on both provider
+ * backends (see meta-api.ts's sendMediaMessage doc comment and the UAZAPI
+ * `ptt` mapping in providers/uazapi.ts) — pair two `send_media` steps
+ * (document/image then audio) to send a file + voice note together.
+ */
+export interface SendMediaStepConfig {
+  media_kind: 'image' | 'document' | 'audio';
+  media_url: string;
+  filename?: string;
+  caption?: string;
 }
 
 export interface TagStepConfig {
@@ -604,6 +619,7 @@ export type AutomationStepConfig =
   | SendButtonsStepConfig
   | SendListStepConfig
   | SendTemplateStepConfig
+  | SendMediaStepConfig
   | TagStepConfig
   | AssignConversationStepConfig
   | UpdateContactFieldStepConfig

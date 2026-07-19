@@ -453,6 +453,10 @@ export async function ingestInboundMessage(input: InboundMessage): Promise<void>
       // Lets the debounce inside detect that a newer message superseded
       // this one during its wait window.
       triggerProviderMessageId: providerMessageId,
+      // Feeds the keyword → media rules check (ai_media_rules) and the
+      // refined automations stand-down check — both need the actual
+      // message text, not just its id.
+      triggerMessageText: inboundText,
     });
   }
 
