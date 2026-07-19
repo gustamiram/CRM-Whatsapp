@@ -22,6 +22,7 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { autoAddContactToDefaultPipeline } from '@/lib/pipelines/auto-add-to-pipeline';
 
 /** A single inbound message, normalized across providers. */
 export interface InboundMessage {
@@ -312,6 +313,19 @@ export async function ingestInboundMessage(input: InboundMessage): Promise<void>
     await dispatchWebhookEvent(supabaseAdmin(), accountId, 'conversation.created', {
       conversation_id: conversation.id,
       contact_id: contactRecord.id,
+    });
+    // A contact's conversation is created exactly once, ever (unique
+    // (account_id, contact_id) constraint — see findOrCreateConversation
+    // above), so this is the correct one-time hook for "auto-add new
+    // contacts to the default pipeline." Awaited, not fire-and-forget —
+    // same reasoning as the automations dispatch above.
+    await autoAddContactToDefaultPipeline({
+      accountId,
+      userId: configOwnerUserId,
+      contactId: contactRecord.id,
+      conversationId: conversation.id,
+      contactName: contactRecord.name,
+      contactPhone: contactRecord.phone,
     });
   }
 

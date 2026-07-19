@@ -1665,7 +1665,13 @@
       "save": "Save",
       "saving": "Saving...",
       "saveFailed": "Failed to save default currency",
-      "saveSuccess": "Default currency updated"
+      "saveSuccess": "Default currency updated",
+      "defaultPipeline": "Automatic pipeline for new contacts",
+      "defaultPipelineDesc": "When a contact's conversation starts for the first time, a deal is automatically created for them in this pipeline's first column. Leave it unset to turn this off.",
+      "pipelineLabel": "Default pipeline",
+      "pipelineNone": "None — off",
+      "pipelineSaveFailed": "Failed to save the default pipeline",
+      "pipelineSaveSuccess": "Default pipeline updated"
     },
     "aiConfig": {
       "title": "Agent setup",

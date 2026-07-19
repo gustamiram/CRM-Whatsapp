@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Coins, Loader2 } from "lucide-react";
+import { Coins, Loader2, GitBranch } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -28,6 +28,11 @@ import { SettingsPanelHead } from "./settings-panel-head";
  * the `accounts_update` RLS policy (017) already restricts that to
  * admins+, so non-admins see a disabled, read-only control.
  */
+interface PipelineOption {
+  id: string;
+  name: string;
+}
+
 export function DealsSettings() {
   const supabase = createClient();
   const {
@@ -42,13 +47,48 @@ export function DealsSettings() {
   const [saving, setSaving] = useState(false);
   const t = useTranslations("Settings.deals");
 
+  // Default pipeline for new contacts — unlike default_currency this
+  // isn't read anywhere else in the app, so it's fetched locally here
+  // rather than threaded through the global useAuth() context.
+  const [pipelines, setPipelines] = useState<PipelineOption[]>([]);
+  const [defaultPipelineId, setDefaultPipelineId] = useState("");
+  const [selectedPipelineId, setSelectedPipelineId] = useState("");
+  const [pipelineLoading, setPipelineLoading] = useState(true);
+  const [pipelineSaving, setPipelineSaving] = useState(false);
+
   // Keep the select in sync once the profile (and its account default)
   // resolves, and after a save round-trips through refreshProfile.
   useEffect(() => {
     setSelected(defaultCurrency);
   }, [defaultCurrency]);
 
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelled = false;
+    setPipelineLoading(true);
+    void (async () => {
+      const [pipelinesRes, accountRes] = await Promise.all([
+        supabase.from("pipelines").select("id, name").order("name"),
+        supabase
+          .from("accounts")
+          .select("default_pipeline_id")
+          .eq("id", accountId)
+          .maybeSingle(),
+      ]);
+      if (cancelled) return;
+      setPipelines((pipelinesRes.data as PipelineOption[] | null) ?? []);
+      const current = accountRes.data?.default_pipeline_id ?? "";
+      setDefaultPipelineId(current);
+      setSelectedPipelineId(current);
+      setPipelineLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, supabase]);
+
   const dirty = selected !== defaultCurrency;
+  const pipelineDirty = selectedPipelineId !== defaultPipelineId;
 
   async function handleSave() {
     if (!accountId || !dirty) return;
@@ -67,6 +107,23 @@ export function DealsSettings() {
     await refreshProfile();
     setSaving(false);
     toast.success(t("saveSuccess"));
+  }
+
+  async function handlePipelineSave() {
+    if (!accountId || !pipelineDirty) return;
+    setPipelineSaving(true);
+    const { error } = await supabase
+      .from("accounts")
+      .update({ default_pipeline_id: selectedPipelineId || null })
+      .eq("id", accountId);
+    if (error) {
+      toast.error(t("pipelineSaveFailed"));
+      setPipelineSaving(false);
+      return;
+    }
+    setDefaultPipelineId(selectedPipelineId);
+    setPipelineSaving(false);
+    toast.success(t("pipelineSaveSuccess"));
   }
 
   return (
@@ -114,6 +171,58 @@ export function DealsSettings() {
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {saving ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  {t("saving")}
+                </>
+              ) : (
+                t("save")
+              )}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <GitBranch className="size-4 text-primary" />
+            {t("defaultPipeline")}
+          </CardTitle>
+          <CardDescription className="text-muted-foreground">
+            {t("defaultPipelineDesc")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:max-w-xs">
+            <Label className="text-muted-foreground">{t("pipelineLabel")}</Label>
+            <select
+              value={selectedPipelineId}
+              onChange={(e) => setSelectedPipelineId(e.target.value)}
+              disabled={!canEditSettings || pipelineLoading}
+              className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">{t("pipelineNone")}</option>
+              {pipelines.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            {!canEditSettings && (
+              <p className="text-xs text-muted-foreground">
+                {t("adminOnlyHint")}
+              </p>
+            )}
+          </div>
+
+          {canEditSettings && (
+            <Button
+              onClick={handlePipelineSave}
+              disabled={pipelineSaving || !pipelineDirty}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {pipelineSaving ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
                   {t("saving")}

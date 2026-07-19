@@ -1665,7 +1665,13 @@
       "save": "Salvar",
       "saving": "Salvando...",
       "saveFailed": "Falha ao salvar a moeda padrão",
-      "saveSuccess": "Moeda padrão atualizada"
+      "saveSuccess": "Moeda padrão atualizada",
+      "defaultPipeline": "Pipeline automático para novos contatos",
+      "defaultPipelineDesc": "Quando a conversa de um contato começa pela primeira vez, um negócio é criado automaticamente para ele na primeira coluna deste pipeline. Deixe em branco para desativar.",
+      "pipelineLabel": "Pipeline padrão",
+      "pipelineNone": "Nenhum — desativado",
+      "pipelineSaveFailed": "Falha ao salvar o pipeline padrão",
+      "pipelineSaveSuccess": "Pipeline padrão atualizado"
     },
     "aiConfig": {
       "title": "Configuração do agente",

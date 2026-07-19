@@ -1665,7 +1665,13 @@
       "save": "Guardar",
       "saving": "Guardando...",
       "saveFailed": "No se pudo guardar la moneda predeterminada",
-      "saveSuccess": "Moneda predeterminada actualizada"
+      "saveSuccess": "Moneda predeterminada actualizada",
+      "defaultPipeline": "Pipeline automático para nuevos contactos",
+      "defaultPipelineDesc": "Cuando la conversación de un contacto comienza por primera vez, se crea automáticamente un negocio para él en la primera columna de este pipeline. Déjalo sin definir para desactivarlo.",
+      "pipelineLabel": "Pipeline predeterminado",
+      "pipelineNone": "Ninguno — desactivado",
+      "pipelineSaveFailed": "No se pudo guardar el pipeline predeterminado",
+      "pipelineSaveSuccess": "Pipeline predeterminado actualizado"
     },
     "aiConfig": {
       "title": "Configuración del agente",
