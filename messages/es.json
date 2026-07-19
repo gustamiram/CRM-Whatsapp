@@ -112,6 +112,14 @@
       "total": "Total",
       "ariaLabel": "Valor del pipeline por etapa"
     },
+    "eventsCalendar": {
+      "title": "Calendario de eventos",
+      "description": "Negocios con fecha de evento programada",
+      "prevMonth": "Mes anterior",
+      "nextMonth": "Mes siguiente",
+      "upcoming": "Próximos eventos",
+      "noUpcoming": "No hay eventos próximos"
+    },
     "responseTimeChart": {
       "title": "Tiempo promedio de primera respuesta",
       "description": "Minutos para responder al primer mensaje sin respuesta de un cliente, por día de la semana",
@@ -514,7 +522,7 @@
       "linkToConversation": "Vincular a conversación",
       "value": "Valor",
       "currency": "Moneda",
-      "expectedCloseDate": "Fecha de cierre esperada",
+      "expectedCloseDate": "Fecha y hora del evento",
       "stage": "Etapa",
       "assignedTo": "Asignado a",
       "unassigned": "Sin asignar",

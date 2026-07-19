@@ -65,3 +65,13 @@ export interface ActivityItem {
   /** Optional deep-link for the whole row (not all items have a target). */
   href?: string
 }
+
+/** A deal carrying an `expected_close_date` — repurposed (migration 042)
+ *  as an event date + time, surfaced on the Dashboard's events calendar. */
+export interface EventItem {
+  id: string
+  title: string
+  /** ISO timestamp (TIMESTAMPTZ). */
+  date: string
+  contactName: string | null
+}

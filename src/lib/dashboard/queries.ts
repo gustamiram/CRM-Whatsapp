@@ -10,6 +10,7 @@ import {
 import type {
   ActivityItem,
   ConversationsSeriesPoint,
+  EventItem,
   MetricsBundle,
   PipelineDonutData,
   PipelineStageSlice,
@@ -395,4 +396,38 @@ export async function loadActivity(db: DB, limit = 20): Promise<ActivityItem[]> 
   return items
     .sort((a, b) => (a.at > b.at ? -1 : a.at < b.at ? 1 : 0))
     .slice(0, limit)
+}
+
+// --- 6. Events calendar --------------------------------------------------
+
+/**
+ * Deals carrying an `expected_close_date` — repurposed (migration 042) as
+ * an event date + time. Lost deals are excluded (a cancelled slot frees
+ * the calendar); won/open both still hold the slot. Fetched in full (no
+ * month-range filter) since the account-scale note at the top of this
+ * file applies here too, and the calendar/AI-availability check both
+ * want the same complete set to page through client-side.
+ */
+export async function loadUpcomingEvents(db: DB): Promise<EventItem[]> {
+  const { data } = await db
+    .from('deals')
+    .select('id, title, expected_close_date, contact:contacts(name)')
+    .not('expected_close_date', 'is', null)
+    .neq('status', 'lost')
+    .order('expected_close_date', { ascending: true })
+
+  return ((data ?? []) as unknown as Array<{
+    id: string
+    title: string
+    expected_close_date: string
+    contact: { name: string | null }[] | { name: string | null } | null
+  }>).map((d) => {
+    const contact = Array.isArray(d.contact) ? d.contact[0] : d.contact
+    return {
+      id: d.id,
+      title: d.title,
+      date: d.expected_close_date,
+      contactName: contact?.name ?? null,
+    }
+  })
 }

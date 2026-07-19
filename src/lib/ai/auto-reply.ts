@@ -2,6 +2,7 @@ import { supabaseAdmin } from './admin-client'
 import { loadAiConfig } from './config'
 import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
+import { retrieveUpcomingEvents } from './events'
 import { generateReply } from './generate'
 import { buildSystemPrompt } from './defaults'
 import { buildHandoffSummary } from './handoff'
@@ -210,10 +211,15 @@ export async function dispatchInboundToAiReply(
       latestUserMessage(messages),
     )
 
+    // Booked events (deals.expected_close_date) so the model can answer
+    // "is <date/time> free?" without inventing availability.
+    const events = await retrieveUpcomingEvents(db, accountId)
+
     const systemPrompt = buildSystemPrompt({
       userPrompt: config.systemPrompt,
       mode: 'auto_reply',
       knowledge,
+      events,
     })
 
     const { text, handoff, usage } = await generateReply({

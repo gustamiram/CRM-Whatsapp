@@ -112,6 +112,14 @@
       "total": "Total",
       "ariaLabel": "Pipeline value by stage"
     },
+    "eventsCalendar": {
+      "title": "Events Calendar",
+      "description": "Deals with a scheduled event date",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "upcoming": "Upcoming events",
+      "noUpcoming": "No upcoming events"
+    },
     "responseTimeChart": {
       "title": "Average First Response Time",
       "description": "Minutes to reply to a customer's first unreplied message, by weekday",
@@ -514,7 +522,7 @@
       "linkToConversation": "Link to Conversation",
       "value": "Value",
       "currency": "Currency",
-      "expectedCloseDate": "Expected Close Date",
+      "expectedCloseDate": "Event date & time",
       "stage": "Stage",
       "assignedTo": "Assigned To",
       "unassigned": "Unassigned",

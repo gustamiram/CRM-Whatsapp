@@ -4,6 +4,7 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit
 import { loadAiConfig } from '@/lib/ai/config'
 import { buildConversationContext } from '@/lib/ai/context'
 import { retrieveKnowledge } from '@/lib/ai/knowledge'
+import { retrieveUpcomingEvents } from '@/lib/ai/events'
 import { generateReply } from '@/lib/ai/generate'
 import { buildSystemPrompt } from '@/lib/ai/defaults'
 import { latestUserMessage } from '@/lib/ai/query'
@@ -98,10 +99,15 @@ export async function POST(request: Request) {
       latestUserMessage(messages),
     )
 
+    // Booked events (deals.expected_close_date) so a drafted reply can
+    // reflect real availability instead of guessing.
+    const events = await retrieveUpcomingEvents(supabase, accountId)
+
     const systemPrompt = buildSystemPrompt({
       userPrompt: config.systemPrompt,
       mode: 'draft',
       knowledge,
+      events,
     })
 
     const { text, usage } = await generateReply({ config, systemPrompt, messages })

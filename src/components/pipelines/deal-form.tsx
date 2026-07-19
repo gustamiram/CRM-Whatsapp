@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -12,6 +12,7 @@ import type {
   DealStatus,
   PipelineStage,
   Profile,
+  Tag,
 } from "@/types";
 import {
   Sheet,
@@ -30,9 +31,25 @@ import {
   MessageSquare,
   DollarSign,
   Loader2,
+  Phone,
+  Mail,
+  Copy,
+  Tag as TagIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+
+/** ISO timestamp -> `datetime-local` input value (local time, no
+ *  timezone suffix) for the event date/time field. */
+function toDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}`;
+}
 
 interface DealFormProps {
   open: boolean;
@@ -70,6 +87,8 @@ export function DealForm({
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [linkedConversation, setLinkedConversation] =
     useState<Conversation | null>(null);
+  const [contactTags, setContactTags] = useState<Tag[]>([]);
+  const [phoneCopied, setPhoneCopied] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [statusAction, setStatusAction] = useState<DealStatus | null>(null);
@@ -92,7 +111,7 @@ export function DealForm({
       setContactId(deal.contact_id ?? "");
       setStageId(deal.stage_id);
       setAssignedTo(deal.assigned_to ?? "");
-      setExpectedCloseDate(deal.expected_close_date ?? "");
+      setExpectedCloseDate(toDatetimeLocalValue(deal.expected_close_date));
       setNotes(deal.notes ?? "");
     } else {
       setTitle("");
@@ -151,6 +170,40 @@ export function DealForm({
     };
   }, [open, contactId, supabase]);
 
+  // Selected contact's tags — same contact_tags join the Inbox sidebar
+  // uses, so the read-only info card below shows identical data.
+  useEffect(() => {
+    if (!open || !contactId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setContactTags([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("contact_tags")
+        .select("id, tag_id, tags(*)")
+        .eq("contact_id", contactId);
+      if (cancelled) return;
+      const mapped = (data ?? [])
+        .filter((ct: Record<string, unknown>) => ct.tags)
+        .map((ct: Record<string, unknown>) => ct.tags as Tag);
+      setContactTags(mapped);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, contactId, supabase]);
+
+  const selectedContact = contacts.find((c) => c.id === contactId) ?? null;
+
+  const handleCopyPhone = useCallback(async () => {
+    if (!selectedContact?.phone) return;
+    await navigator.clipboard.writeText(selectedContact.phone);
+    setPhoneCopied(true);
+    setTimeout(() => setPhoneCopied(false), 2000);
+  }, [selectedContact]);
+
   async function handleSave() {
     if (!title.trim() || !contactId || !stageId) {
       toast.error(t("toastRequired"));
@@ -167,7 +220,9 @@ export function DealForm({
       stage_id: stageId,
       assigned_to: assignedTo || null,
       notes: notes.trim() || null,
-      expected_close_date: expectedCloseDate || null,
+      expected_close_date: expectedCloseDate
+        ? new Date(expectedCloseDate).toISOString()
+        : null,
     };
 
     if (deal) {
@@ -295,6 +350,82 @@ export function DealForm({
               )}
             </div>
 
+            {/* Read-only contact info — mirrors the Inbox sidebar's
+                identity fields (ContactSidebar) so the same context is
+                available while creating/editing a deal. Intentionally
+                redundant with the contact record itself. */}
+            {selectedContact && (
+              <div className="rounded-lg border border-border bg-muted/50 p-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-foreground">
+                    {selectedContact.avatar_url ? (
+                      <img
+                        src={selectedContact.avatar_url}
+                        alt={selectedContact.name || selectedContact.phone}
+                        className="h-10 w-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      (selectedContact.name || selectedContact.phone)
+                        .charAt(0)
+                        .toUpperCase()
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {selectedContact.name || selectedContact.phone}
+                    </p>
+                    {selectedContact.company && (
+                      <p className="truncate text-xs text-muted-foreground">
+                        {selectedContact.company}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={handleCopyPhone}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                  >
+                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                    <span className="flex-1 truncate text-left">
+                      {selectedContact.phone}
+                    </span>
+                    {phoneCopied ? (
+                      <Check className="h-3 w-3 shrink-0 text-primary" />
+                    ) : (
+                      <Copy className="h-3 w-3 shrink-0" />
+                    )}
+                  </button>
+                  {selectedContact.email && (
+                    <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+                      <Mail className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{selectedContact.email}</span>
+                    </div>
+                  )}
+                </div>
+
+                {contactTags.length > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1 px-2">
+                    <TagIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    {contactTags.map((tag) => (
+                      <span
+                        key={tag.id}
+                        className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                        style={{
+                          backgroundColor: `${tag.color}20`,
+                          color: tag.color,
+                        }}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-[1fr_110px] gap-3">
               <div className="grid gap-2">
                 <Label className="text-muted-foreground">{t("value")}</Label>
@@ -328,7 +459,7 @@ export function DealForm({
             <div className="grid gap-2">
               <Label className="text-muted-foreground">{t("expectedCloseDate")}</Label>
               <Input
-                type="date"
+                type="datetime-local"
                 value={expectedCloseDate}
                 onChange={(e) => setExpectedCloseDate(e.target.value)}
                 className="border-border bg-muted text-foreground"

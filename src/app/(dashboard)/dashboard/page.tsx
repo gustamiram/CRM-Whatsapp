@@ -17,10 +17,12 @@ import {
   loadMetrics,
   loadPipelineDonut,
   loadResponseTime,
+  loadUpcomingEvents,
 } from '@/lib/dashboard/queries'
 import type {
   ActivityItem,
   ConversationsSeriesPoint,
+  EventItem,
   MetricsBundle,
   PipelineDonutData,
   ResponseTimeSummary,
@@ -31,6 +33,7 @@ import { SkeletonCard } from '@/components/dashboard/skeleton'
 import { QuickActions } from '@/components/dashboard/quick-actions'
 import { ConversationsChart } from '@/components/dashboard/conversations-chart'
 import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
+import { EventsCalendar } from '@/components/dashboard/events-calendar'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
 
@@ -63,6 +66,9 @@ export default function DashboardPage() {
 
   const [activity, setActivity] = useState<ActivityItem[] | null>(null)
   const [activityLoading, setActivityLoading] = useState(true)
+
+  const [events, setEvents] = useState<EventItem[] | null>(null)
+  const [eventsLoading, setEventsLoading] = useState(true)
 
   const loadAll = useCallback(() => {
     const db = createClient()
@@ -97,6 +103,11 @@ export default function DashboardPage() {
       .then((a) => setActivity(a))
       .catch((err) => console.error('[dashboard] activity failed:', err))
       .finally(() => setActivityLoading(false))
+
+    void loadUpcomingEvents(db)
+      .then((e) => setEvents(e))
+      .catch((err) => console.error('[dashboard] events failed:', err))
+      .finally(() => setEventsLoading(false))
   }, [])
 
   useEffect(() => {
@@ -198,7 +209,7 @@ export default function DashboardPage() {
           stretched height so their rounded borders line up. Without
           this, the pipeline card rendered at its natural (shorter)
           height while the line chart drove the row height. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-8">
         <div className="h-full lg:col-span-3">
           <ConversationsChart
             series={series}
@@ -213,6 +224,9 @@ export default function DashboardPage() {
             loading={pipelineLoading}
             currency={defaultCurrency}
           />
+        </div>
+        <div className="h-full lg:col-span-3">
+          <EventsCalendar events={events} loading={eventsLoading} />
         </div>
       </div>
 
