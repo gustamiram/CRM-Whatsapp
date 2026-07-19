@@ -1688,7 +1688,9 @@
       "saveSuccess": "AI assistant saved.",
       "saveFailed": "Failed to save.",
       "removeSuccess": "AI configuration removed.",
-      "removeFailed": "Failed to remove."
+      "removeFailed": "Failed to remove.",
+      "replyDelay": "Reply delay (seconds)",
+      "replyDelayDesc": "Wait before answering, so a customer typing across several messages gets one reply covering all of them. 0 replies instantly."
     },
     "aiKnowledge": {
       "loadFailed": "Failed to load knowledge base",

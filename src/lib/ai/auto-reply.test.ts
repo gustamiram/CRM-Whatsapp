@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AiConfig } from './types'
 
 // Shared, hoisted mock state so the module mocks can close over it.
@@ -14,6 +14,9 @@ const h = vi.hoisted(() => ({
     claim: true as boolean,
     updatePayload: null as Record<string, unknown> | null,
     rpcCalls: [] as { name: string; args: unknown }[],
+    // The conversation's newest customer message_id, as the debounce's
+    // tie-break query would see it after the wait.
+    newestCustomerMessageId: null as string | null,
   },
 }))
 
@@ -33,6 +36,24 @@ vi.mock('./admin-client', () => ({
           in: () => chain,
           limit: () =>
             Promise.resolve({ data: h.state.autoResponders, error: null }),
+        }
+        return chain
+      }
+      if (table === 'messages') {
+        // .select().eq().eq().order().order().limit().maybeSingle() →
+        // the debounce's "am I still the newest customer message?" check.
+        const chain = {
+          select: () => chain,
+          eq: () => chain,
+          order: () => chain,
+          limit: () => chain,
+          maybeSingle: () =>
+            Promise.resolve({
+              data: h.state.newestCustomerMessageId
+                ? { message_id: h.state.newestCustomerMessageId }
+                : null,
+              error: null,
+            }),
         }
         return chain
       }
@@ -75,6 +96,7 @@ function aiConfig(overrides: Partial<AiConfig> = {}): AiConfig {
     isActive: true,
     autoReplyEnabled: true,
     autoReplyMaxPerConversation: 3,
+    autoReplyDelaySeconds: 0,
     handoffAgentId: null,
     embeddingsApiKey: null,
     ...overrides,
@@ -91,6 +113,7 @@ beforeEach(() => {
   h.state.claim = true
   h.state.updatePayload = null
   h.state.rpcCalls = []
+  h.state.newestCustomerMessageId = null
   h.loadAiConfig.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
   h.retrieveKnowledge.mockResolvedValue([])
@@ -208,5 +231,71 @@ describe('dispatchInboundToAiReply — handoff', () => {
       ai_autoreply_disabled: true,
       assigned_agent_id: 'agent-7',
     })
+  })
+})
+
+describe('dispatchInboundToAiReply — debounce', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('waits the configured delay, then replies when its trigger is still the newest customer message', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ autoReplyDelaySeconds: 5 }))
+    h.state.newestCustomerMessageId = 'wamid-1'
+
+    const dispatch = dispatchInboundToAiReply({
+      ...ARGS,
+      triggerProviderMessageId: 'wamid-1',
+    })
+    // Nothing should happen before the delay elapses.
+    await vi.advanceTimersByTimeAsync(4999)
+    expect(h.generateReply).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    await dispatch
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Hello!' }),
+    )
+  })
+
+  it('stands down when a newer customer message superseded it during the wait', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ autoReplyDelaySeconds: 5 }))
+    // A second message arrived while this dispatch was waiting.
+    h.state.newestCustomerMessageId = 'wamid-2'
+
+    const dispatch = dispatchInboundToAiReply({
+      ...ARGS,
+      triggerProviderMessageId: 'wamid-1',
+    })
+    await vi.advanceTimersByTimeAsync(5000)
+    await dispatch
+
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('caps the wait at 30s even if a higher value is configured', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ autoReplyDelaySeconds: 999 }))
+    h.state.newestCustomerMessageId = 'wamid-1'
+
+    const dispatch = dispatchInboundToAiReply({
+      ...ARGS,
+      triggerProviderMessageId: 'wamid-1',
+    })
+    await vi.advanceTimersByTimeAsync(30_000)
+    await dispatch
+    expect(h.engineSendText).toHaveBeenCalled()
+  })
+
+  it('skips the wait entirely when the delay is 0', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ autoReplyDelaySeconds: 0 }))
+    await dispatchInboundToAiReply({
+      ...ARGS,
+      triggerProviderMessageId: 'wamid-1',
+    })
+    expect(h.engineSendText).toHaveBeenCalled()
   })
 })

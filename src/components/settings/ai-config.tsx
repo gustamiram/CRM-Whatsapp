@@ -72,6 +72,9 @@ export function AiConfig() {
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
   const [maxPerConversation, setMaxPerConversation] = useState(3);
+  // Debounce before the bot answers, so multi-message bursts from the
+  // customer get one reply covering everything. 0 = reply immediately.
+  const [replyDelaySeconds, setReplyDelaySeconds] = useState(10);
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
   const [members, setMembers] = useState<AccountMember[]>([]);
@@ -99,6 +102,7 @@ export function AiConfig() {
         setIsActive(data.is_active);
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
+        setReplyDelaySeconds(data.auto_reply_delay_seconds ?? 10);
         setHandoffAgentId(data.handoff_agent_id ?? '');
         setHasStoredKey(Boolean(data.has_key));
         setApiKey(data.has_key ? MASKED_KEY : '');
@@ -150,6 +154,7 @@ export function AiConfig() {
     is_active: isActive,
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
+    auto_reply_delay_seconds: replyDelaySeconds,
     handoff_agent_id: handoffAgentId || null,
   });
 
@@ -449,6 +454,29 @@ export function AiConfig() {
                 onChange={(e) =>
                   setMaxPerConversation(
                     Math.min(20, Math.max(1, Number(e.target.value) || 1)),
+                  )
+                }
+                disabled={disabled || !autoReplyEnabled}
+                className="w-20"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label htmlFor="ai-delay">{t('replyDelay')}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('replyDelayDesc')}
+                </p>
+              </div>
+              <Input
+                id="ai-delay"
+                type="number"
+                min={0}
+                max={30}
+                value={replyDelaySeconds}
+                onChange={(e) =>
+                  setReplyDelaySeconds(
+                    Math.min(30, Math.max(0, Number(e.target.value) || 0)),
                   )
                 }
                 disabled={disabled || !autoReplyEnabled}

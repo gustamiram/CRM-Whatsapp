@@ -18,6 +18,12 @@ interface DispatchArgs {
   /** The account's WhatsApp config owner, used for the outbound send's
    *  audit columns (mirrors how the flow runner passes it through). */
   configOwnerUserId: string
+  /** Provider message id of the inbound that triggered this dispatch.
+   *  Drives the debounce: after the configured delay, if this is no
+   *  longer the conversation's newest customer message, this dispatch
+   *  stands down and the newer message's own dispatch replies instead
+   *  — with every message in context. */
+  triggerProviderMessageId?: string | null
 }
 
 /**
@@ -42,13 +48,58 @@ interface DispatchArgs {
 export async function dispatchInboundToAiReply(
   args: DispatchArgs,
 ): Promise<void> {
-  const { accountId, conversationId, contactId, configOwnerUserId } = args
+  const {
+    accountId,
+    conversationId,
+    contactId,
+    configOwnerUserId,
+    triggerProviderMessageId,
+  } = args
 
   try {
     const db = supabaseAdmin()
 
     const config = await loadAiConfig(db, accountId)
     if (!config || !config.autoReplyEnabled) return
+
+    // Debounce. Customers routinely split one thought across several
+    // quick messages; replying the instant the first lands means the
+    // answer ignores what they're still typing. Wait the configured
+    // delay, then check whether the triggering message is still the
+    // newest customer message — if something newer arrived, stand down:
+    // that message's own dispatch (running the same wait) replies once,
+    // with the whole burst in context because `buildConversationContext`
+    // below runs AFTER this wait.
+    //
+    // The sleep runs inside the webhook route's `after()` and is awaited
+    // all the way up, so the serverless function stays alive through it
+    // (the delay cap of 30s + LLM + send fits the route's maxDuration
+    // of 60s). Every conversation-state gate below (agent assigned,
+    // auto-reply switched off, reply cap) intentionally runs after the
+    // wait, so a human stepping in during the delay also stops the bot.
+    const delaySeconds = config.autoReplyDelaySeconds ?? 0
+    if (delaySeconds > 0) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(delaySeconds, 30) * 1000),
+      )
+      if (triggerProviderMessageId) {
+        // Tie-break by id so two dispatches racing on equal timestamps
+        // (Meta delivers second-precision) both resolve the same row —
+        // exactly one of them proceeds.
+        const { data: newest } = await db
+          .from('messages')
+          .select('message_id')
+          .eq('conversation_id', conversationId)
+          .eq('sender_type', 'customer')
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (newest?.message_id && newest.message_id !== triggerProviderMessageId) {
+          return // a newer customer message owns the reply
+        }
+      }
+    }
 
     // Deterministic, user-configured responders win over the LLM — the
     // caller already excludes messages a Flow consumed. Message-level

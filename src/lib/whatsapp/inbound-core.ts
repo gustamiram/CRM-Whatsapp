@@ -450,6 +450,9 @@ export async function ingestInboundMessage(input: InboundMessage): Promise<void>
       conversationId: conversation.id,
       contactId: contactRecord.id,
       configOwnerUserId,
+      // Lets the debounce inside detect that a newer message superseded
+      // this one during its wait window.
+      triggerProviderMessageId: providerMessageId,
     });
   }
 

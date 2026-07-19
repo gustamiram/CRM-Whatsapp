@@ -1688,7 +1688,9 @@
       "saveSuccess": "Assistente de IA salvo.",
       "saveFailed": "Falha ao salvar.",
       "removeSuccess": "Configuração de IA removida.",
-      "removeFailed": "Falha ao remover."
+      "removeFailed": "Falha ao remover.",
+      "replyDelay": "Atraso da resposta (segundos)",
+      "replyDelayDesc": "Espera antes de responder, para que um cliente que digita em várias mensagens seguidas receba uma única resposta cobrindo tudo. 0 responde na hora."
     },
     "aiKnowledge": {
       "loadFailed": "Falha ao carregar a base de conhecimento",

@@ -21,6 +21,11 @@ export interface AiConfig {
   isActive: boolean
   autoReplyEnabled: boolean
   autoReplyMaxPerConversation: number
+  /** Seconds the auto-reply bot waits after an inbound message before
+   *  generating, so a customer typing across several quick messages is
+   *  answered once, with all of them in context. 0 disables the wait.
+   *  Capped at 30 (webhook serverless budget). */
+  autoReplyDelaySeconds: number
   /** Where auto-reply hands a conversation off when the model bails: an
    *  agent's `auth.users.id`, or null to leave it unassigned (drop into
    *  the shared queue). */
