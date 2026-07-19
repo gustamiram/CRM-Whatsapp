@@ -15,6 +15,7 @@ import {
   DollarSign,
   StickyNote,
   Plus,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -46,7 +47,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     const [dealsRes, notesRes, tagsRes] = await Promise.all([
       supabase
         .from("deals")
-        .select("*, stage:pipeline_stages(*)")
+        .select("*, stage:pipeline_stages(*), assignee:profiles!deals_assigned_to_fkey(*)")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: false }),
       supabase
@@ -245,6 +246,30 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                         </span>
                       )}
                     </div>
+                    {/* Same fields captured in the New Deal form
+                        (deal-form.tsx) — shown here read-only so the
+                        agent sees them without leaving the inbox. */}
+                    {deal.expected_close_date && (
+                      <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Calendar className="h-3 w-3 shrink-0" />
+                        <span>
+                          {format(new Date(deal.expected_close_date), "MMM d, yyyy HH:mm")}
+                        </span>
+                      </div>
+                    )}
+                    {deal.assignee && (
+                      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <User className="h-3 w-3 shrink-0" />
+                        <span className="truncate">
+                          {deal.assignee.full_name || deal.assignee.email}
+                        </span>
+                      </div>
+                    )}
+                    {deal.notes && (
+                      <p className="mt-1.5 whitespace-pre-wrap text-[11px] text-muted-foreground">
+                        {deal.notes}
+                      </p>
+                    )}
                   </div>
                 ))
               )}

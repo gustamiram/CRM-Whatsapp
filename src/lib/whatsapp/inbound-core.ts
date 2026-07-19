@@ -40,8 +40,14 @@ export interface InboundMessage {
    * for any contact WhatsApp gave a real phone number for.
    */
   senderWaLid?: string | null;
-  /** Display name from the provider (falls back to the phone). */
-  senderName: string;
+  /**
+   * WhatsApp push name from the provider, when it sent one on this
+   * event. Absent (not falsy-but-present as the phone) when unknown —
+   * callers must NOT fall back to the phone number here, or that
+   * string permanently "poisons" `contacts.name` and blocks a real
+   * name from ever backfilling later (see `findOrCreateContact`).
+   */
+  senderName?: string;
   /** Provider message id → persisted as messages.message_id. */
   providerMessageId: string;
   /** Epoch milliseconds. */
@@ -182,7 +188,7 @@ async function findOrCreateContact(
   accountId: string,
   configOwnerUserId: string,
   phone: string,
-  name: string,
+  name: string | undefined,
   waLid?: string | null
 ): Promise<ContactOutcome | null> {
   const existingContact = await findExistingContact(supabaseAdmin(), accountId, phone);
@@ -206,7 +212,13 @@ async function findOrCreateContact(
       account_id: accountId,
       user_id: configOwnerUserId,
       phone,
-      name: name || phone,
+      // Leave name unset when the provider didn't send a real push name
+      // — storing the phone here would look identical in the UI today
+      // (name || phone already falls back everywhere) but would block a
+      // real name from ever being backfilled later, since the update
+      // check above only fires when the incoming name differs from
+      // what's stored.
+      name: name || null,
       wa_lid: waLid ?? null,
     })
     .select()
@@ -653,7 +665,7 @@ export async function ingestHistoryMessage(input: HistoryMessage): Promise<void>
     accountId,
     configOwnerUserId,
     customerPhone,
-    senderName || customerPhone
+    senderName
   );
   if (!contactOutcome) return;
   const contactRecord = contactOutcome.contact;
