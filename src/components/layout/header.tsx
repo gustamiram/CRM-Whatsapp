@@ -20,6 +20,7 @@ import { ModeToggle } from "@/components/layout/mode-toggle";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
 
 const pageTitles: Record<string, string> = {
+  "/home": "home",
   "/dashboard": "dashboard",
   "/inbox": "inbox",
   "/notifications": "notifications",

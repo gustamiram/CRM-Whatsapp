@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DealForm } from "@/components/pipelines/deal-form";
+import { resolveDefaultPipelineStage } from "@/lib/pipelines/resolve-default-stage";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
@@ -111,39 +112,13 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const openNewDealForm = useCallback(async () => {
     if (!accountId) return;
     const supabase = createClient();
-
-    const { data: account } = await supabase
-      .from("accounts")
-      .select("default_pipeline_id")
-      .eq("id", accountId)
-      .maybeSingle();
-
-    let pipelineId = account?.default_pipeline_id as string | null | undefined;
-    if (!pipelineId) {
-      // No default configured (Settings > Deals & currency) — fall back
-      // to the account's oldest pipeline, same default the Pipelines
-      // page itself uses.
-      const { data: firstPipeline } = await supabase
-        .from("pipelines")
-        .select("id")
-        .order("created_at")
-        .limit(1)
-        .maybeSingle();
-      pipelineId = firstPipeline?.id;
-    }
-    if (!pipelineId) {
+    const resolved = await resolveDefaultPipelineStage(supabase, accountId);
+    if (!resolved) {
       toast.error(tPipelines("toastNoPipeline"));
       return;
     }
-
-    const { data: stagesData } = await supabase
-      .from("pipeline_stages")
-      .select("*")
-      .eq("pipeline_id", pipelineId)
-      .order("position");
-
-    setFormPipelineId(pipelineId);
-    setFormStages((stagesData ?? []) as PipelineStage[]);
+    setFormPipelineId(resolved.pipelineId);
+    setFormStages(resolved.stages);
     setEditingDeal(null);
     setDealFormOpen(true);
   }, [accountId, tPipelines]);

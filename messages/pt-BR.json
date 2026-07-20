@@ -16,6 +16,7 @@
   },
   "Sidebar": {
     "title": "Template de CRM para WhatsApp",
+    "home": "Início",
     "dashboard": "Dashboard",
     "inbox": "Caixa de entrada",
     "notifications": "Notificações",
@@ -41,6 +42,7 @@
     "menuSignOut": "Sair"
   },
   "Header": {
+    "home": "Início",
     "dashboard": "Dashboard",
     "inbox": "Caixa de entrada",
     "notifications": "Notificações",
@@ -59,6 +61,12 @@
   },
   "ModeToggle": {
     "switchMode": "Mudar para o modo {mode}"
+  },
+  "Home": {
+    "page": {
+      "title": "Início",
+      "description": "Seu calendário e tarefas em um só lugar."
+    }
   },
   "Dashboard": {
     "page": {
@@ -118,7 +126,12 @@
       "prevMonth": "Mês anterior",
       "nextMonth": "Próximo mês",
       "upcoming": "Próximos eventos",
-      "noUpcoming": "Nenhum evento agendado"
+      "noUpcoming": "Nenhum evento agendado",
+      "addEventForDay": "Clique para ver ou adicionar um evento neste dia",
+      "eventNamePlaceholder": "Nome do evento...",
+      "noPipelineForEvent": "Crie um pipeline primeiro (Configurações > Negociações e moeda)",
+      "failedAddEvent": "Falha ao adicionar o evento",
+      "eventAdded": "Evento adicionado"
     },
     "tasks": {
       "title": "Tarefas",

@@ -16,6 +16,7 @@
   },
   "Sidebar": {
     "title": "CRM Template for WhatsApp",
+    "home": "Home",
     "dashboard": "Dashboard",
     "inbox": "Inbox",
     "notifications": "Notifications",
@@ -41,6 +42,7 @@
     "menuSignOut": "Sign out"
   },
   "Header": {
+    "home": "Home",
     "dashboard": "Dashboard",
     "inbox": "Inbox",
     "notifications": "Notifications",
@@ -59,6 +61,12 @@
   },
   "ModeToggle": {
     "switchMode": "Switch to {mode} mode"
+  },
+  "Home": {
+    "page": {
+      "title": "Home",
+      "description": "Your calendar and tasks at a glance."
+    }
   },
   "Dashboard": {
     "page": {
@@ -118,7 +126,12 @@
       "prevMonth": "Previous month",
       "nextMonth": "Next month",
       "upcoming": "Upcoming events",
-      "noUpcoming": "No upcoming events"
+      "noUpcoming": "No upcoming events",
+      "addEventForDay": "Click to view or add an event for this day",
+      "eventNamePlaceholder": "Event name...",
+      "noPipelineForEvent": "Create a pipeline first (Settings > Deals & currency)",
+      "failedAddEvent": "Failed to add the event",
+      "eventAdded": "Event added"
     },
     "tasks": {
       "title": "Tasks",
