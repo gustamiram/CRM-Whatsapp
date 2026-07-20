@@ -23,10 +23,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { RecurringTaskForm } from "@/components/tasks/recurring-task-form";
 import {
   Check,
   X,
@@ -299,6 +301,15 @@ export function DealForm({
     }
   }
 
+  async function handleDeleteTask(task: Task) {
+    setDealTasks((prev) => prev.filter((tk) => tk.id !== task.id));
+    const { error } = await supabase.from("tasks").delete().eq("id", task.id);
+    if (error) {
+      toast.error(t("toastFailedDeleteTask"));
+      void fetchDealTasks();
+    }
+  }
+
   const handleCopyPhone = useCallback(async () => {
     if (!selectedContact?.phone) return;
     await navigator.clipboard.writeText(selectedContact.phone);
@@ -439,7 +450,14 @@ export function DealForm({
             </SheetTitle>
           </SheetHeader>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <Tabs defaultValue="dados" className="flex min-h-0 flex-1 flex-col gap-0">
+            <TabsList className="mx-4 mt-3 bg-muted/50">
+              <TabsTrigger value="dados">{t("tabDados")}</TabsTrigger>
+              <TabsTrigger value="tarefas">{t("tabTarefas")}</TabsTrigger>
+              <TabsTrigger value="anexos">{t("tabAnexos")}</TabsTrigger>
+            </TabsList>
+
+          <TabsContent value="dados" className="flex-1 overflow-y-auto p-4 space-y-4">
             <div className="grid gap-2">
               <Label className="text-muted-foreground">{t("title")}</Label>
               <Input
@@ -631,7 +649,196 @@ export function DealForm({
                 placeholder={t("notesPlaceholder")}
                 className="min-h-[100px] border-border bg-muted text-foreground"
               />
+            </div>
 
+            {deal && (
+              <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-3">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  {t("status")}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => handleStatusChange("won")}
+                    disabled={!!statusAction || deal.status === "won"}
+                    className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {statusAction === "won" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Check className="mr-1 h-4 w-4" />
+                        {t("markAsWon")}
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => handleStatusChange("lost")}
+                    disabled={!!statusAction || deal.status === "lost"}
+                    className="flex-1 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {statusAction === "lost" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <X className="mr-1 h-4 w-4" />
+                        {t("markAsLost")}
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {deal.status && deal.status !== "open" && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => handleStatusChange("open")}
+                    disabled={!!statusAction}
+                    className="w-full text-muted-foreground hover:text-foreground"
+                  >
+                    {t("reopenDeal")}
+                  </Button>
+                )}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="tarefas" className="flex-1 overflow-y-auto p-4 space-y-4">
+            {!deal ? (
+              <p className="text-xs text-muted-foreground">{t("saveDealFirstForTasks")}</p>
+            ) : (
+              <>
+                <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-3">
+                  <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    <ListChecks className="h-3 w-3" />
+                    {t("tasks")}
+                  </p>
+
+                  {dealTasks.length > 0 && (
+                    <div className="space-y-1.5">
+                      {dealTasks.map((task) => (
+                        <label
+                          key={task.id}
+                          className="flex items-start gap-2 rounded-md bg-muted px-2 py-1.5 text-xs"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={task.status === "done"}
+                            onChange={() => handleToggleTask(task)}
+                            className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className={
+                                task.status === "done"
+                                  ? "truncate text-muted-foreground line-through"
+                                  : "truncate text-foreground"
+                              }
+                            >
+                              {task.title}
+                            </p>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                              {task.task_type !== "general" && (
+                                <span
+                                  className={
+                                    task.task_type === "billing"
+                                      ? "rounded-full bg-amber-500/20 px-1.5 py-0.5 text-amber-400"
+                                      : "rounded-full bg-primary/20 px-1.5 py-0.5 text-primary"
+                                  }
+                                >
+                                  {t(`taskTypes.${task.task_type}`)}
+                                </span>
+                              )}
+                              {task.due_at && (
+                                <span>
+                                  {new Date(task.due_at).toLocaleString(undefined, {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              )}
+                              {task.reminder_status === "sent" && (
+                                <span className="text-emerald-400">{t("reminderSent")}</span>
+                              )}
+                              {task.reminder_status === "blocked_window" && (
+                                <span className="text-red-400">{t("reminderBlocked")}</span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteTask(task);
+                            }}
+                            aria-label={t("deleteTask")}
+                            className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-[1fr_auto] gap-1.5">
+                    <Input
+                      value={newTaskTitle}
+                      onChange={(e) => setNewTaskTitle(e.target.value)}
+                      placeholder={t("taskTitlePlaceholder")}
+                      className="h-8 border-border bg-muted text-xs text-foreground"
+                    />
+                    <select
+                      value={newTaskType}
+                      onChange={(e) => setNewTaskType(e.target.value as TaskType)}
+                      className="h-8 rounded-md border border-border bg-muted px-1.5 text-xs text-foreground"
+                    >
+                      <option value="general">{t("taskTypes.general")}</option>
+                      <option value="event_reminder">{t("taskTypes.event_reminder")}</option>
+                      <option value="billing">{t("taskTypes.billing")}</option>
+                    </select>
+                    <Input
+                      type="datetime-local"
+                      value={newTaskDue}
+                      onChange={(e) => setNewTaskDue(e.target.value)}
+                      className="col-span-2 h-8 border-border bg-muted text-xs text-foreground"
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleAddTask}
+                      disabled={addingTask || !newTaskTitle.trim()}
+                      className="col-span-2 h-8 bg-primary text-xs text-primary-foreground hover:bg-primary/90"
+                    >
+                      {addingTask ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <>
+                          <Plus className="h-3.5 w-3.5" />
+                          {t("addTask")}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {accountId && (
+                  <RecurringTaskForm
+                    accountId={accountId}
+                    dealId={deal.id}
+                    contactId={deal.contact_id}
+                    onGenerated={fetchDealTasks}
+                  />
+                )}
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="anexos" className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">{t("attachment")}</Label>
               <input
                 ref={attachmentInputRef}
                 type="file"
@@ -689,164 +896,8 @@ export function DealForm({
                 </button>
               )}
             </div>
-
-            {deal && (
-              <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-3">
-                <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  <ListChecks className="h-3 w-3" />
-                  {t("tasks")}
-                </p>
-
-                {dealTasks.length > 0 && (
-                  <div className="space-y-1.5">
-                    {dealTasks.map((task) => (
-                      <label
-                        key={task.id}
-                        className="flex items-start gap-2 rounded-md bg-muted px-2 py-1.5 text-xs"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={task.status === "done"}
-                          onChange={() => handleToggleTask(task)}
-                          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className={
-                              task.status === "done"
-                                ? "truncate text-muted-foreground line-through"
-                                : "truncate text-foreground"
-                            }
-                          >
-                            {task.title}
-                          </p>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
-                            {task.task_type !== "general" && (
-                              <span
-                                className={
-                                  task.task_type === "billing"
-                                    ? "rounded-full bg-amber-500/20 px-1.5 py-0.5 text-amber-400"
-                                    : "rounded-full bg-primary/20 px-1.5 py-0.5 text-primary"
-                                }
-                              >
-                                {t(`taskTypes.${task.task_type}`)}
-                              </span>
-                            )}
-                            {task.due_at && (
-                              <span>
-                                {new Date(task.due_at).toLocaleString(undefined, {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                            )}
-                            {task.reminder_status === "sent" && (
-                              <span className="text-emerald-400">{t("reminderSent")}</span>
-                            )}
-                            {task.reminder_status === "blocked_window" && (
-                              <span className="text-red-400">{t("reminderBlocked")}</span>
-                            )}
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-[1fr_auto] gap-1.5">
-                  <Input
-                    value={newTaskTitle}
-                    onChange={(e) => setNewTaskTitle(e.target.value)}
-                    placeholder={t("taskTitlePlaceholder")}
-                    className="h-8 border-border bg-muted text-xs text-foreground"
-                  />
-                  <select
-                    value={newTaskType}
-                    onChange={(e) => setNewTaskType(e.target.value as TaskType)}
-                    className="h-8 rounded-md border border-border bg-muted px-1.5 text-xs text-foreground"
-                  >
-                    <option value="general">{t("taskTypes.general")}</option>
-                    <option value="event_reminder">{t("taskTypes.event_reminder")}</option>
-                    <option value="billing">{t("taskTypes.billing")}</option>
-                  </select>
-                  <Input
-                    type="datetime-local"
-                    value={newTaskDue}
-                    onChange={(e) => setNewTaskDue(e.target.value)}
-                    className="col-span-2 h-8 border-border bg-muted text-xs text-foreground"
-                  />
-                  <Button
-                    type="button"
-                    onClick={handleAddTask}
-                    disabled={addingTask || !newTaskTitle.trim()}
-                    className="col-span-2 h-8 bg-primary text-xs text-primary-foreground hover:bg-primary/90"
-                  >
-                    {addingTask ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <>
-                        <Plus className="h-3.5 w-3.5" />
-                        {t("addTask")}
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {deal && (
-              <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-3">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  {t("status")}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    onClick={() => handleStatusChange("won")}
-                    disabled={!!statusAction || deal.status === "won"}
-                    className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    {statusAction === "won" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Check className="mr-1 h-4 w-4" />
-                        {t("markAsWon")}
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => handleStatusChange("lost")}
-                    disabled={!!statusAction || deal.status === "lost"}
-                    className="flex-1 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-                  >
-                    {statusAction === "lost" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        <X className="mr-1 h-4 w-4" />
-                        {t("markAsLost")}
-                      </>
-                    )}
-                  </Button>
-                </div>
-                {deal.status && deal.status !== "open" && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => handleStatusChange("open")}
-                    disabled={!!statusAction}
-                    className="w-full text-muted-foreground hover:text-foreground"
-                  >
-                    {t("reopenDeal")}
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
+          </TabsContent>
+          </Tabs>
 
           <div className="border-t border-border/50 bg-popover/80 p-4">
             <div className="flex gap-2">

@@ -68,6 +68,24 @@
       "description": "Seu calendário e tarefas em um só lugar."
     }
   },
+  "Tasks": {
+    "recurring": {
+      "title": "Tarefas recorrentes (parcelas)",
+      "titlePlaceholder": "Cobrar parcela",
+      "startDate": "Data inicial",
+      "dayOfMonth": "Dia do mês",
+      "repetitions": "Repetições",
+      "type": "Tipo",
+      "taskTypes": {
+        "general": "Geral",
+        "event_reminder": "Lembrete de evento",
+        "billing": "Pagamento"
+      },
+      "generateButton": "Gerar {count} {count, plural, =1 {tarefa} other {tarefas}}",
+      "toastGenerated": "{count} {count, plural, =1 {tarefa gerada} other {tarefas geradas}}",
+      "toastFailed": "Falha ao gerar as tarefas"
+    }
+  },
   "Dashboard": {
     "page": {
       "title": "Dashboard",
@@ -145,9 +163,11 @@
       "taskTitlePlaceholder": "Nova tarefa...",
       "selectContact": "Selecione um contato",
       "addTask": "Adicionar tarefa",
+      "deleteTask": "Excluir tarefa",
       "reminderSent": "Lembrete enviado",
       "reminderBlocked": "Lembrete bloqueado — fora da janela de 24h",
       "toastFailedUpdate": "Falha ao atualizar a tarefa",
+      "toastFailedDelete": "Falha ao excluir a tarefa",
       "toastFailedAdd": "Falha ao adicionar a tarefa",
       "toastBillingNeedsContact": "Tarefas de cobrança precisam de um contato"
     },
@@ -548,6 +568,11 @@
     "form": {
       "editDeal": "Editar negócio",
       "newDeal": "Novo negócio",
+      "tabDados": "Dados",
+      "tabTarefas": "Tarefas",
+      "tabAnexos": "Anexos",
+      "attachment": "Anexo",
+      "saveDealFirstForTasks": "Salve o negócio primeiro para adicionar tarefas.",
       "title": "Título",
       "titlePlaceholder": "Título do negócio",
       "contact": "Contato",
@@ -577,8 +602,10 @@
       "addTask": "Adicionar tarefa",
       "reminderSent": "Lembrete enviado",
       "reminderBlocked": "Lembrete bloqueado — fora da janela de 24h",
+      "deleteTask": "Excluir tarefa",
       "toastFailedAddTask": "Falha ao adicionar tarefa",
       "toastFailedTaskUpdate": "Falha ao atualizar tarefa",
+      "toastFailedDeleteTask": "Falha ao excluir a tarefa",
       "status": "Status",
       "markAsWon": "Marcar como ganho",
       "markAsLost": "Marcar como perdido",

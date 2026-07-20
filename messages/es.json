@@ -68,6 +68,24 @@
       "description": "Tu calendario y tareas en un solo lugar."
     }
   },
+  "Tasks": {
+    "recurring": {
+      "title": "Tareas recurrentes (cuotas)",
+      "titlePlaceholder": "Cobrar cuota",
+      "startDate": "Fecha inicial",
+      "dayOfMonth": "Día del mes",
+      "repetitions": "Repeticiones",
+      "type": "Tipo",
+      "taskTypes": {
+        "general": "General",
+        "event_reminder": "Recordatorio de evento",
+        "billing": "Pago"
+      },
+      "generateButton": "Generar {count} {count, plural, =1 {tarea} other {tareas}}",
+      "toastGenerated": "{count} {count, plural, =1 {tarea generada} other {tareas generadas}}",
+      "toastFailed": "Error al generar las tareas"
+    }
+  },
   "Dashboard": {
     "page": {
       "title": "Dashboard",
@@ -145,9 +163,11 @@
       "taskTitlePlaceholder": "Nueva tarea...",
       "selectContact": "Selecciona un contacto",
       "addTask": "Agregar tarea",
+      "deleteTask": "Eliminar tarea",
       "reminderSent": "Recordatorio enviado",
       "reminderBlocked": "Recordatorio bloqueado — fuera de la ventana de 24h",
       "toastFailedUpdate": "Error al actualizar la tarea",
+      "toastFailedDelete": "Error al eliminar la tarea",
       "toastFailedAdd": "Error al agregar la tarea",
       "toastBillingNeedsContact": "Las tareas de cobro necesitan un contacto"
     },
@@ -548,6 +568,11 @@
     "form": {
       "editDeal": "Editar negocio",
       "newDeal": "Nuevo negocio",
+      "tabDados": "Datos",
+      "tabTarefas": "Tareas",
+      "tabAnexos": "Adjuntos",
+      "attachment": "Adjunto",
+      "saveDealFirstForTasks": "Guarda el negocio primero para agregar tareas.",
       "title": "Título",
       "titlePlaceholder": "Título del negocio",
       "contact": "Contacto",
@@ -577,8 +602,10 @@
       "addTask": "Agregar tarea",
       "reminderSent": "Recordatorio enviado",
       "reminderBlocked": "Recordatorio bloqueado — fuera de la ventana de 24h",
+      "deleteTask": "Eliminar tarea",
       "toastFailedAddTask": "Error al agregar la tarea",
       "toastFailedTaskUpdate": "Error al actualizar la tarea",
+      "toastFailedDeleteTask": "Error al eliminar la tarea",
       "status": "Estado",
       "markAsWon": "Marcar como ganado",
       "markAsLost": "Marcar como perdido",

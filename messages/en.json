@@ -68,6 +68,24 @@
       "description": "Your calendar and tasks at a glance."
     }
   },
+  "Tasks": {
+    "recurring": {
+      "title": "Recurring tasks (installments)",
+      "titlePlaceholder": "Collect installment",
+      "startDate": "Start date",
+      "dayOfMonth": "Day of month",
+      "repetitions": "Repetitions",
+      "type": "Type",
+      "taskTypes": {
+        "general": "General",
+        "event_reminder": "Event reminder",
+        "billing": "Billing"
+      },
+      "generateButton": "Generate {count} {count, plural, =1 {task} other {tasks}}",
+      "toastGenerated": "{count} {count, plural, =1 {task} other {tasks}} generated",
+      "toastFailed": "Failed to generate the tasks"
+    }
+  },
   "Dashboard": {
     "page": {
       "title": "Dashboard",
@@ -145,9 +163,11 @@
       "taskTitlePlaceholder": "New task...",
       "selectContact": "Select a contact",
       "addTask": "Add task",
+      "deleteTask": "Delete task",
       "reminderSent": "Reminder sent",
       "reminderBlocked": "Reminder blocked — outside 24h window",
       "toastFailedUpdate": "Failed to update task",
+      "toastFailedDelete": "Failed to delete task",
       "toastFailedAdd": "Failed to add task",
       "toastBillingNeedsContact": "Billing tasks need a contact"
     },
@@ -548,6 +568,11 @@
     "form": {
       "editDeal": "Edit Deal",
       "newDeal": "New Deal",
+      "tabDados": "Data",
+      "tabTarefas": "Tasks",
+      "tabAnexos": "Attachments",
+      "attachment": "Attachment",
+      "saveDealFirstForTasks": "Save the deal first to add tasks.",
       "title": "Title",
       "titlePlaceholder": "Deal title",
       "contact": "Contact",
@@ -577,8 +602,10 @@
       "addTask": "Add task",
       "reminderSent": "Reminder sent",
       "reminderBlocked": "Reminder blocked — outside 24h window",
+      "deleteTask": "Delete task",
       "toastFailedAddTask": "Failed to add task",
       "toastFailedTaskUpdate": "Failed to update task",
+      "toastFailedDeleteTask": "Failed to delete task",
       "status": "Status",
       "markAsWon": "Mark as Won",
       "markAsLost": "Mark as Lost",

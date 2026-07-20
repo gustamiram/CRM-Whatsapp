@@ -2,15 +2,16 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { addDays, addMonths, format, isSameMonth, isToday, startOfMonth, startOfWeek } from 'date-fns'
+import { enUS, es, ptBR } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, Clock, Plus, Loader2 } from 'lucide-react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { resolveDefaultPipelineStage } from '@/lib/pipelines/resolve-default-stage'
 import type { EventItem } from '@/lib/dashboard/types'
-import { localDayKey, DOW_SHORT_MON_FIRST } from '@/lib/dashboard/date-utils'
+import { localDayKey } from '@/lib/dashboard/date-utils'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from './skeleton'
@@ -22,12 +23,9 @@ interface EventsCalendarProps {
   onEventsChanged?: () => void
 }
 
-// Module-level plain function (not inlined in the component body) so the
-// React Compiler doesn't flag the `Date.now()` call as an impure render —
-// same pattern as `relativeTime` in activity-feed.tsx.
-function isUpcoming(dateIso: string): boolean {
-  return new Date(dateIso).getTime() >= Date.now()
-}
+// next-intl locale -> date-fns locale, for the month name and weekday
+// headers (date-fns's own default locale strings are always English).
+const DATE_FNS_LOCALES = { en: enUS, 'pt-BR': ptBR, es } as const
 
 /**
  * Month-view calendar for `deals.expected_close_date` (repurposed,
@@ -48,6 +46,9 @@ function isUpcoming(dateIso: string): boolean {
 export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalendarProps) {
   const t = useTranslations('Dashboard.eventsCalendar')
   const { accountId, defaultCurrency } = useAuth()
+  const nextIntlLocale = useLocale()
+  const dateFnsLocale =
+    DATE_FNS_LOCALES[nextIntlLocale as keyof typeof DATE_FNS_LOCALES] ?? enUS
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [newEventTitle, setNewEventTitle] = useState('')
@@ -73,9 +74,23 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
     return Array.from({ length: 42 }, (_, i) => addDays(start, i))
   }, [month])
 
-  const upcoming = (events ?? []).filter((e) => isUpcoming(e.date)).slice(0, 4)
+  // Locale-aware 2-letter weekday headers (Mon..Sun), from a fixed
+  // reference week rather than `days` above (which shifts per month).
+  const weekdayLabels = useMemo(() => {
+    const start = startOfWeek(new Date(), { weekStartsOn: 1 })
+    return Array.from({ length: 7 }, (_, i) =>
+      format(addDays(start, i), 'EEEEEE', { locale: dateFnsLocale }),
+    )
+  }, [dateFnsLocale])
 
-  const selectedEvents = selectedKey ? byDay.get(selectedKey) ?? [] : []
+  // Scoped to the currently-viewed month (not "all future events ever")
+  // so a newly-added event shows up immediately with zero extra
+  // configuration, and old accumulated events don't pile up forever.
+  const upcoming = useMemo(() => {
+    return (events ?? [])
+      .filter((e) => isSameMonth(new Date(e.date), month))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }, [events, month])
 
   const handleSelectDay = useCallback((key: string) => {
     setSelectedKey((prev) => (prev === key ? null : key))
@@ -153,7 +168,7 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <span className="text-base font-bold capitalize tracking-tight text-foreground">
-                {format(month, 'MMMM yyyy')}
+                {format(month, 'MMMM yyyy', { locale: dateFnsLocale })}
               </span>
               <button
                 type="button"
@@ -167,8 +182,8 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
 
             <div className="mt-4 rounded-lg bg-muted/40 p-2.5">
               <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {DOW_SHORT_MON_FIRST.map((d) => (
-                  <span key={d}>{d.slice(0, 2)}</span>
+                {weekdayLabels.map((d, i) => (
+                  <span key={i}>{d}</span>
                 ))}
               </div>
 
@@ -206,20 +221,11 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
             </div>
 
             {selectedKey && (
-              <div className="mt-3 space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-2.5">
-                {selectedEvents.map((e) => (
-                  <div key={e.id}>
-                    <p className="text-xs font-semibold text-foreground">{e.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {format(new Date(e.date), 'HH:mm')}
-                      {e.contactName ? ` — ${e.contactName}` : ''}
-                    </p>
-                  </div>
-                ))}
-
-                {/* Quick add — just a name and a time, per the day already
-                    selected by clicking the grid above. */}
-                <div className={selectedEvents.length > 0 ? 'flex gap-1.5 border-t border-primary/20 pt-2' : 'flex gap-1.5'}>
+              <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-2.5">
+                {/* Quick add only — existing events for this day are
+                    already visible in the "upcoming" list below, so this
+                    panel stays a pure create action, not a duplicate view. */}
+                <div className="flex gap-1.5">
                   <Input
                     value={newEventTitle}
                     onChange={(e) => setNewEventTitle(e.target.value)}

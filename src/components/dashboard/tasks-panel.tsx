@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { ListChecks, Plus, Loader2 } from 'lucide-react'
+import { ListChecks, Plus, Loader2, X } from 'lucide-react'
 
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import type { Contact, Task, TaskType } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { RecurringTaskForm } from '@/components/tasks/recurring-task-form'
 import { Skeleton } from './skeleton'
 
 // Module-level plain function (not inlined in the component body) so the
@@ -97,6 +98,16 @@ export function TasksPanel() {
       .eq('id', task.id)
     if (error) {
       toast.error(t('toastFailedUpdate'))
+      void fetchTasks()
+    }
+  }
+
+  async function handleDelete(task: Task) {
+    const supabase = createClient()
+    setTasks((prev) => (prev ?? []).filter((tk) => tk.id !== task.id))
+    const { error } = await supabase.from('tasks').delete().eq('id', task.id)
+    if (error) {
+      toast.error(t('toastFailedDelete'))
       void fetchTasks()
     }
   }
@@ -201,6 +212,18 @@ export function TasksPanel() {
                           )}
                         </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleDelete(task)
+                        }}
+                        aria-label={t('deleteTask')}
+                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
                     </label>
                   )
                 })
@@ -265,6 +288,12 @@ export function TasksPanel() {
                 </Button>
               )}
             </div>
+
+            {accountId && (
+              <div className="mt-4">
+                <RecurringTaskForm accountId={accountId} onGenerated={fetchTasks} />
+              </div>
+            )}
           </>
         )}
       </div>
