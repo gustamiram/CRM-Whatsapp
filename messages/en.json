@@ -269,6 +269,7 @@
       "deals": "Deals",
       "noTags": "No tags",
       "noDeals": "No deals",
+      "addDeal": "Add deal",
       "addNotePlaceholder": "Add a note..."
     },
     "aiBanner": {
@@ -501,7 +502,8 @@
       "toastFailedMoveDeal": "Failed to move deal",
       "toastFailedCreatePipeline": "Failed to create pipeline",
       "toastPipelineCreated": "Pipeline created",
-      "toastNotLinkedToAccount": "Your profile is not linked to an account."
+      "toastNotLinkedToAccount": "Your profile is not linked to an account.",
+      "toastNoPipeline": "Create a pipeline first."
     },
     "board": {
       "dropDealHere": "Drop a deal here",

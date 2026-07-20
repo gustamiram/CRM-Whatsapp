@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag } from "@/types";
+import type { Contact, Deal, ContactNote, Tag, PipelineStage } from "@/types";
 import {
   Phone,
   Mail,
@@ -19,7 +19,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DealForm } from "@/components/pipelines/deal-form";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
 interface ContactSidebarProps {
@@ -30,6 +32,8 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
 
+  const tPipelines = useTranslations("Pipelines.page");
+
   const { accountId } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -37,6 +41,16 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+
+  // Deal form — lets an agent create/edit a deal for this contact
+  // without leaving the inbox. `formPipelineId`/`formStages` are
+  // resolved on demand: an existing deal's own pipeline when editing,
+  // or the account's default pipeline (falling back to its oldest one)
+  // when creating new.
+  const [dealFormOpen, setDealFormOpen] = useState(false);
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+  const [formPipelineId, setFormPipelineId] = useState("");
+  const [formStages, setFormStages] = useState<PipelineStage[]>([]);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -80,6 +94,59 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContactData();
   }, [fetchContactData]);
+
+  const openEditDealForm = useCallback(async (deal: Deal) => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("pipeline_stages")
+      .select("*")
+      .eq("pipeline_id", deal.pipeline_id)
+      .order("position");
+    setFormPipelineId(deal.pipeline_id);
+    setFormStages((data ?? []) as PipelineStage[]);
+    setEditingDeal(deal);
+    setDealFormOpen(true);
+  }, []);
+
+  const openNewDealForm = useCallback(async () => {
+    if (!accountId) return;
+    const supabase = createClient();
+
+    const { data: account } = await supabase
+      .from("accounts")
+      .select("default_pipeline_id")
+      .eq("id", accountId)
+      .maybeSingle();
+
+    let pipelineId = account?.default_pipeline_id as string | null | undefined;
+    if (!pipelineId) {
+      // No default configured (Settings > Deals & currency) — fall back
+      // to the account's oldest pipeline, same default the Pipelines
+      // page itself uses.
+      const { data: firstPipeline } = await supabase
+        .from("pipelines")
+        .select("id")
+        .order("created_at")
+        .limit(1)
+        .maybeSingle();
+      pipelineId = firstPipeline?.id;
+    }
+    if (!pipelineId) {
+      toast.error(tPipelines("toastNoPipeline"));
+      return;
+    }
+
+    const { data: stagesData } = await supabase
+      .from("pipeline_stages")
+      .select("*")
+      .eq("pipeline_id", pipelineId)
+      .order("position");
+
+    setFormPipelineId(pipelineId);
+    setFormStages((stagesData ?? []) as PipelineStage[]);
+    setEditingDeal(null);
+    setDealFormOpen(true);
+  }, [accountId, tPipelines]);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
@@ -213,18 +280,30 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
           {/* Active Deals */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <DollarSign className="h-3 w-3" />
-              {tSidebar("deals")}
+            <div className="flex items-center justify-between gap-2 px-1">
+              <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <DollarSign className="h-3 w-3" />
+                {tSidebar("deals")}
+              </div>
+              <button
+                type="button"
+                onClick={openNewDealForm}
+                title={tSidebar("addDeal")}
+                className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
             </div>
             <div className="mt-2 space-y-2">
               {deals.length === 0 ? (
                 <p className="px-1 text-xs text-muted-foreground">{tSidebar("noDeals")}</p>
               ) : (
                 deals.map((deal) => (
-                  <div
+                  <button
+                    type="button"
                     key={deal.id}
-                    className="rounded-lg bg-muted px-3 py-2"
+                    onClick={() => openEditDealForm(deal)}
+                    className="w-full rounded-lg bg-muted px-3 py-2 text-left transition-colors hover:bg-muted/70"
                   >
                     <p className="text-sm font-medium text-foreground">
                       {deal.title}
@@ -270,7 +349,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                         {deal.notes}
                       </p>
                     )}
-                  </div>
+                  </button>
                 ))
               )}
             </div>
@@ -323,6 +402,18 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           </div>
         </div>
       </ScrollArea>
+
+      {formPipelineId && (
+        <DealForm
+          open={dealFormOpen}
+          onOpenChange={setDealFormOpen}
+          deal={editingDeal}
+          pipelineId={formPipelineId}
+          stages={formStages}
+          presetContactId={contact.id}
+          onSaved={fetchContactData}
+        />
+      )}
     </div>
   );
 }

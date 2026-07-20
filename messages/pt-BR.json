@@ -269,6 +269,7 @@
       "deals": "Negócios",
       "noTags": "Nenhuma tag",
       "noDeals": "Nenhum negócio",
+      "addDeal": "Adicionar negócio",
       "addNotePlaceholder": "Adicionar uma nota..."
     },
     "aiBanner": {
@@ -501,7 +502,8 @@
       "toastFailedMoveDeal": "Falha ao mover negócio",
       "toastFailedCreatePipeline": "Falha ao criar pipeline",
       "toastPipelineCreated": "Pipeline criado",
-      "toastNotLinkedToAccount": "Seu perfil não está vinculado a uma conta."
+      "toastNotLinkedToAccount": "Seu perfil não está vinculado a uma conta.",
+      "toastNoPipeline": "Crie um pipeline primeiro."
     },
     "board": {
       "dropDealHere": "Solte um negócio aqui",
