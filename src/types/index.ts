@@ -409,6 +409,8 @@ export interface Deal {
   value: number;
   currency?: string;
   notes?: string;
+  attachment_url?: string;
+  attachment_filename?: string;
   expected_close_date?: string;
   status?: DealStatus;
   created_at: string;
@@ -416,6 +418,35 @@ export interface Deal {
   contact?: Contact;
   stage?: PipelineStage;
   assignee?: Profile;
+}
+
+// ============================================================
+// Tasks (migration 044) — optionally linked to a deal; the
+// `billing` type is synced with the AI agent (src/lib/tasks/engine.ts)
+// ============================================================
+
+export type TaskType = 'general' | 'event_reminder' | 'billing';
+export type TaskStatus = 'pending' | 'done';
+export type TaskReminderStatus = 'sent' | 'blocked_window' | 'failed';
+
+export interface Task {
+  id: string;
+  account_id: string;
+  created_by?: string;
+  deal_id?: string | null;
+  contact_id?: string | null;
+  title: string;
+  notes?: string | null;
+  task_type: TaskType;
+  due_at?: string | null;
+  status: TaskStatus;
+  completed_at?: string | null;
+  reminder_sent_at?: string | null;
+  reminder_status?: TaskReminderStatus | null;
+  created_at: string;
+  updated_at?: string;
+  deal?: Deal;
+  contact?: Contact;
 }
 
 export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';

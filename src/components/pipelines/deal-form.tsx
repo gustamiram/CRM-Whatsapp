@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { CURRENCIES } from "@/lib/currency";
+import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/upload-media";
 import type {
   Contact,
   Conversation,
@@ -13,6 +14,8 @@ import type {
   PipelineStage,
   Profile,
   Tag,
+  Task,
+  TaskType,
 } from "@/types";
 import {
   Sheet,
@@ -35,9 +38,19 @@ import {
   Mail,
   Copy,
   Tag as TagIcon,
+  Paperclip,
+  Upload,
+  ListChecks,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+
+// Same bucket as automations' send_media step (migration 023 allow-lists
+// PDF + image MIME types, account-scoped RLS) — one freeform attachment,
+// no kind picker needed since it's always either a photo or a PDF.
+const DEAL_ATTACHMENT_BUCKET = "chat-media";
+const DEAL_ATTACHMENT_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
 
 /** ISO timestamp -> `datetime-local` input value (local time, no
  *  timezone suffix) for the event date/time field. */
@@ -87,6 +100,10 @@ export function DealForm({
   const [assignedTo, setAssignedTo] = useState("");
   const [expectedCloseDate, setExpectedCloseDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [attachmentUrl, setAttachmentUrl] = useState("");
+  const [attachmentFilename, setAttachmentFilename] = useState("");
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -99,6 +116,14 @@ export function DealForm({
   const [statusAction, setStatusAction] = useState<DealStatus | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Tasks — only meaningful once the deal has a real id (a brand-new,
+  // unsaved deal has nothing for tasks.deal_id to reference yet).
+  const [dealTasks, setDealTasks] = useState<Task[]>([]);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskType, setNewTaskType] = useState<TaskType>("general");
+  const [newTaskDue, setNewTaskDue] = useState("");
+  const [addingTask, setAddingTask] = useState(false);
 
   // Reset the form fields every time the sheet opens or its input
   // props change. This is a legitimate prop-driven sync; the rule is
@@ -118,6 +143,8 @@ export function DealForm({
       setAssignedTo(deal.assigned_to ?? "");
       setExpectedCloseDate(toDatetimeLocalValue(deal.expected_close_date));
       setNotes(deal.notes ?? "");
+      setAttachmentUrl(deal.attachment_url ?? "");
+      setAttachmentFilename(deal.attachment_filename ?? "");
     } else {
       setTitle("");
       setValue("");
@@ -127,6 +154,8 @@ export function DealForm({
       setAssignedTo("");
       setExpectedCloseDate("");
       setNotes("");
+      setAttachmentUrl("");
+      setAttachmentFilename("");
     }
   }, [open, deal, defaultStageId, stages, defaultCurrency, presetContactId]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -202,12 +231,102 @@ export function DealForm({
 
   const selectedContact = contacts.find((c) => c.id === contactId) ?? null;
 
+  const fetchDealTasks = useCallback(async () => {
+    if (!deal) return;
+    const { data } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("deal_id", deal.id)
+      .order("due_at", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false });
+    setDealTasks((data ?? []) as Task[]);
+  }, [deal, supabase]);
+
+  useEffect(() => {
+    if (!open || !deal) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDealTasks([]);
+      return;
+    }
+    void fetchDealTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, deal?.id]);
+
+  async function handleAddTask() {
+    if (!deal || !newTaskTitle.trim() || !accountId) return;
+    setAddingTask(true);
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user;
+    const { error } = await supabase.from("tasks").insert({
+      account_id: accountId,
+      created_by: user?.id,
+      deal_id: deal.id,
+      contact_id: deal.contact_id,
+      title: newTaskTitle.trim(),
+      task_type: newTaskType,
+      due_at: newTaskDue ? new Date(newTaskDue).toISOString() : null,
+    });
+    setAddingTask(false);
+    if (error) {
+      toast.error(t("toastFailedAddTask"));
+      return;
+    }
+    setNewTaskTitle("");
+    setNewTaskType("general");
+    setNewTaskDue("");
+    void fetchDealTasks();
+  }
+
+  async function handleToggleTask(task: Task) {
+    const done = task.status !== "done";
+    // Optimistic — a stale toggle re-syncs on the next fetchDealTasks.
+    setDealTasks((prev) =>
+      prev.map((tk) =>
+        tk.id === task.id
+          ? { ...tk, status: done ? "done" : "pending", completed_at: done ? new Date().toISOString() : null }
+          : tk,
+      ),
+    );
+    const { error } = await supabase
+      .from("tasks")
+      .update({ status: done ? "done" : "pending", completed_at: done ? new Date().toISOString() : null })
+      .eq("id", task.id);
+    if (error) {
+      toast.error(t("toastFailedTaskUpdate"));
+      void fetchDealTasks();
+    }
+  }
+
   const handleCopyPhone = useCallback(async () => {
     if (!selectedContact?.phone) return;
     await navigator.clipboard.writeText(selectedContact.phone);
     setPhoneCopied(true);
     setTimeout(() => setPhoneCopied(false), 2000);
   }, [selectedContact]);
+
+  const handleAttachmentFile = useCallback(async (file: File) => {
+    if (file.size > MEDIA_MAX_BYTES_BY_KIND.document) {
+      toast.error(
+        t("attachmentTooLarge", {
+          limit: (MEDIA_MAX_BYTES_BY_KIND.document / 1024 / 1024).toFixed(0),
+        }),
+      );
+      return;
+    }
+    setUploadingAttachment(true);
+    try {
+      const { publicUrl } = await uploadAccountMedia(DEAL_ATTACHMENT_BUCKET, file);
+      setAttachmentUrl(publicUrl);
+      setAttachmentFilename(file.name);
+      toast.success(t("attachmentUploaded"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("attachmentUploadFailed"));
+    } finally {
+      setUploadingAttachment(false);
+    }
+  }, [t]);
 
   async function handleSave() {
     if (!title.trim() || !contactId || !stageId) {
@@ -225,6 +344,8 @@ export function DealForm({
       stage_id: stageId,
       assigned_to: assignedTo || null,
       notes: notes.trim() || null,
+      attachment_url: attachmentUrl || null,
+      attachment_filename: attachmentUrl ? attachmentFilename || null : null,
       expected_close_date: expectedCloseDate
         ? new Date(expectedCloseDate).toISOString()
         : null,
@@ -510,7 +631,170 @@ export function DealForm({
                 placeholder={t("notesPlaceholder")}
                 className="min-h-[100px] border-border bg-muted text-foreground"
               />
+
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                accept={DEAL_ATTACHMENT_ACCEPT}
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleAttachmentFile(file);
+                  e.target.value = "";
+                }}
+              />
+              {attachmentUrl ? (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs">
+                  <Paperclip className="h-3.5 w-3.5 shrink-0 text-primary" />
+                  <a
+                    href={attachmentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-w-0 flex-1 truncate text-foreground hover:underline"
+                    title={attachmentFilename || attachmentUrl}
+                  >
+                    {attachmentFilename || attachmentUrl}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAttachmentUrl("");
+                      setAttachmentFilename("");
+                    }}
+                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    aria-label={t("removeAttachment")}
+                    disabled={uploadingAttachment}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  disabled={uploadingAttachment}
+                  className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-border bg-card px-3 py-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {uploadingAttachment ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      {t("uploadingAttachment")}
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-3.5 w-3.5" />
+                      {t("attachFile")}
+                    </>
+                  )}
+                </button>
+              )}
             </div>
+
+            {deal && (
+              <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-3">
+                <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <ListChecks className="h-3 w-3" />
+                  {t("tasks")}
+                </p>
+
+                {dealTasks.length > 0 && (
+                  <div className="space-y-1.5">
+                    {dealTasks.map((task) => (
+                      <label
+                        key={task.id}
+                        className="flex items-start gap-2 rounded-md bg-muted px-2 py-1.5 text-xs"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={task.status === "done"}
+                          onChange={() => handleToggleTask(task)}
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className={
+                              task.status === "done"
+                                ? "truncate text-muted-foreground line-through"
+                                : "truncate text-foreground"
+                            }
+                          >
+                            {task.title}
+                          </p>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                            {task.task_type !== "general" && (
+                              <span
+                                className={
+                                  task.task_type === "billing"
+                                    ? "rounded-full bg-amber-500/20 px-1.5 py-0.5 text-amber-400"
+                                    : "rounded-full bg-primary/20 px-1.5 py-0.5 text-primary"
+                                }
+                              >
+                                {t(`taskTypes.${task.task_type}`)}
+                              </span>
+                            )}
+                            {task.due_at && (
+                              <span>
+                                {new Date(task.due_at).toLocaleString(undefined, {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            )}
+                            {task.reminder_status === "sent" && (
+                              <span className="text-emerald-400">{t("reminderSent")}</span>
+                            )}
+                            {task.reminder_status === "blocked_window" && (
+                              <span className="text-red-400">{t("reminderBlocked")}</span>
+                            )}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-[1fr_auto] gap-1.5">
+                  <Input
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    placeholder={t("taskTitlePlaceholder")}
+                    className="h-8 border-border bg-muted text-xs text-foreground"
+                  />
+                  <select
+                    value={newTaskType}
+                    onChange={(e) => setNewTaskType(e.target.value as TaskType)}
+                    className="h-8 rounded-md border border-border bg-muted px-1.5 text-xs text-foreground"
+                  >
+                    <option value="general">{t("taskTypes.general")}</option>
+                    <option value="event_reminder">{t("taskTypes.event_reminder")}</option>
+                    <option value="billing">{t("taskTypes.billing")}</option>
+                  </select>
+                  <Input
+                    type="datetime-local"
+                    value={newTaskDue}
+                    onChange={(e) => setNewTaskDue(e.target.value)}
+                    className="col-span-2 h-8 border-border bg-muted text-xs text-foreground"
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleAddTask}
+                    disabled={addingTask || !newTaskTitle.trim()}
+                    className="col-span-2 h-8 bg-primary text-xs text-primary-foreground hover:bg-primary/90"
+                  >
+                    {addingTask ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Plus className="h-3.5 w-3.5" />
+                        {t("addTask")}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {deal && (
               <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-3">

@@ -120,6 +120,24 @@
       "upcoming": "Próximos eventos",
       "noUpcoming": "Nenhum evento agendado"
     },
+    "tasks": {
+      "title": "Tarefas",
+      "description": "Lembretes — vinculados a um negócio ou avulsos",
+      "noTasks": "Nenhuma tarefa pendente",
+      "taskTypes": {
+        "general": "Geral",
+        "event_reminder": "Lembrete de evento",
+        "billing": "Cobrança"
+      },
+      "taskTitlePlaceholder": "Nova tarefa...",
+      "selectContact": "Selecione um contato",
+      "addTask": "Adicionar tarefa",
+      "reminderSent": "Lembrete enviado",
+      "reminderBlocked": "Lembrete bloqueado — fora da janela de 24h",
+      "toastFailedUpdate": "Falha ao atualizar a tarefa",
+      "toastFailedAdd": "Falha ao adicionar a tarefa",
+      "toastBillingNeedsContact": "Tarefas de cobrança precisam de um contato"
+    },
     "responseTimeChart": {
       "title": "Tempo médio de primeira resposta",
       "description": "Minutos até responder a primeira mensagem não respondida de um cliente, por dia da semana",
@@ -530,6 +548,24 @@
       "unassigned": "Não atribuído",
       "notes": "Notas",
       "notesPlaceholder": "Adicionar notas...",
+      "attachFile": "Anexar uma foto ou PDF",
+      "uploadingAttachment": "Enviando...",
+      "removeAttachment": "Remover anexo",
+      "attachmentUploaded": "Arquivo anexado",
+      "attachmentUploadFailed": "Falha ao enviar o arquivo",
+      "attachmentTooLarge": "Arquivo muito grande — limite de {limit} MB",
+      "tasks": "Tarefas",
+      "taskTypes": {
+        "general": "Geral",
+        "event_reminder": "Lembrete de evento",
+        "billing": "Cobrança"
+      },
+      "taskTitlePlaceholder": "Nova tarefa...",
+      "addTask": "Adicionar tarefa",
+      "reminderSent": "Lembrete enviado",
+      "reminderBlocked": "Lembrete bloqueado — fora da janela de 24h",
+      "toastFailedAddTask": "Falha ao adicionar tarefa",
+      "toastFailedTaskUpdate": "Falha ao atualizar tarefa",
       "status": "Status",
       "markAsWon": "Marcar como ganho",
       "markAsLost": "Marcar como perdido",

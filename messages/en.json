@@ -120,6 +120,24 @@
       "upcoming": "Upcoming events",
       "noUpcoming": "No upcoming events"
     },
+    "tasks": {
+      "title": "Tasks",
+      "description": "Reminders — linked to a deal or standalone",
+      "noTasks": "No pending tasks",
+      "taskTypes": {
+        "general": "General",
+        "event_reminder": "Event reminder",
+        "billing": "Billing"
+      },
+      "taskTitlePlaceholder": "New task...",
+      "selectContact": "Select a contact",
+      "addTask": "Add task",
+      "reminderSent": "Reminder sent",
+      "reminderBlocked": "Reminder blocked — outside 24h window",
+      "toastFailedUpdate": "Failed to update task",
+      "toastFailedAdd": "Failed to add task",
+      "toastBillingNeedsContact": "Billing tasks need a contact"
+    },
     "responseTimeChart": {
       "title": "Average First Response Time",
       "description": "Minutes to reply to a customer's first unreplied message, by weekday",
@@ -530,6 +548,24 @@
       "unassigned": "Unassigned",
       "notes": "Notes",
       "notesPlaceholder": "Add notes...",
+      "attachFile": "Attach a photo or PDF",
+      "uploadingAttachment": "Uploading...",
+      "removeAttachment": "Remove attachment",
+      "attachmentUploaded": "File attached",
+      "attachmentUploadFailed": "Failed to upload the file",
+      "attachmentTooLarge": "File is too large — limit is {limit} MB",
+      "tasks": "Tasks",
+      "taskTypes": {
+        "general": "General",
+        "event_reminder": "Event reminder",
+        "billing": "Billing"
+      },
+      "taskTitlePlaceholder": "New task...",
+      "addTask": "Add task",
+      "reminderSent": "Reminder sent",
+      "reminderBlocked": "Reminder blocked — outside 24h window",
+      "toastFailedAddTask": "Failed to add task",
+      "toastFailedTaskUpdate": "Failed to update task",
       "status": "Status",
       "markAsWon": "Mark as Won",
       "markAsLost": "Mark as Lost",

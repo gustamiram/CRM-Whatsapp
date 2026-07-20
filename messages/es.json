@@ -120,6 +120,24 @@
       "upcoming": "Próximos eventos",
       "noUpcoming": "No hay eventos próximos"
     },
+    "tasks": {
+      "title": "Tareas",
+      "description": "Recordatorios — vinculados a un negocio o independientes",
+      "noTasks": "No hay tareas pendientes",
+      "taskTypes": {
+        "general": "General",
+        "event_reminder": "Recordatorio de evento",
+        "billing": "Cobro"
+      },
+      "taskTitlePlaceholder": "Nueva tarea...",
+      "selectContact": "Selecciona un contacto",
+      "addTask": "Agregar tarea",
+      "reminderSent": "Recordatorio enviado",
+      "reminderBlocked": "Recordatorio bloqueado — fuera de la ventana de 24h",
+      "toastFailedUpdate": "Error al actualizar la tarea",
+      "toastFailedAdd": "Error al agregar la tarea",
+      "toastBillingNeedsContact": "Las tareas de cobro necesitan un contacto"
+    },
     "responseTimeChart": {
       "title": "Tiempo promedio de primera respuesta",
       "description": "Minutos para responder al primer mensaje sin respuesta de un cliente, por día de la semana",
@@ -530,6 +548,24 @@
       "unassigned": "Sin asignar",
       "notes": "Notas",
       "notesPlaceholder": "Agregar notas...",
+      "attachFile": "Adjuntar una foto o PDF",
+      "uploadingAttachment": "Subiendo...",
+      "removeAttachment": "Quitar adjunto",
+      "attachmentUploaded": "Archivo adjuntado",
+      "attachmentUploadFailed": "Error al subir el archivo",
+      "attachmentTooLarge": "Archivo demasiado grande — límite de {limit} MB",
+      "tasks": "Tareas",
+      "taskTypes": {
+        "general": "General",
+        "event_reminder": "Recordatorio de evento",
+        "billing": "Cobro"
+      },
+      "taskTitlePlaceholder": "Nueva tarea...",
+      "addTask": "Agregar tarea",
+      "reminderSent": "Recordatorio enviado",
+      "reminderBlocked": "Recordatorio bloqueado — fuera de la ventana de 24h",
+      "toastFailedAddTask": "Error al agregar la tarea",
+      "toastFailedTaskUpdate": "Error al actualizar la tarea",
       "status": "Estado",
       "markAsWon": "Marcar como ganado",
       "markAsLost": "Marcar como perdido",

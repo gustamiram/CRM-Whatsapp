@@ -93,8 +93,22 @@ function pickMessage(body: Record<string, unknown>): UazapiMessage | null {
 }
 
 function mediaUrlOf(msg: UazapiMessage): string | null {
-  const url = msg.mediaUrl || msg.file || msg.content
-  if (typeof url === 'string' && /^https?:\/\//i.test(url)) return url
+  // Best-effort — presence/naming varies by UAZAPI version. Widened
+  // with a few more plausible field names (audio/url/downloadUrl) on
+  // top of the three already observed to work for image/document, none
+  // of which have been confirmed to appear for audio/ptt messages —
+  // see the diagnostic log below.
+  const candidates = [
+    msg.mediaUrl,
+    msg.file,
+    msg.content,
+    msg.audio as unknown,
+    msg.url as unknown,
+    msg.downloadUrl as unknown,
+  ]
+  for (const url of candidates) {
+    if (typeof url === 'string' && /^https?:\/\//i.test(url)) return url
+  }
   return null
 }
 
@@ -332,6 +346,13 @@ async function processUazapiEvent(
   const isMedia =
     type === 'image' || type === 'video' || type === 'audio' || type === 'document'
   const mediaUrl = isMedia ? mediaUrlOf(msg) : null
+  if (type === 'audio' && !mediaUrl) {
+    // "Áudio indisponível" bug: mediaUrlOf found none of its candidate
+    // fields on this message. Logging the full raw payload (no
+    // credentials in a webhook body) so the next real occurrence tells
+    // us exactly which field UAZAPI actually used for this voice note.
+    console.warn('[uazapi webhook] audio message with no resolvable media URL:', JSON.stringify(msg))
+  }
   const interactiveReplyId =
     type === 'interactive'
       ? msg.selectedId || msg.buttonId || msg.vote || null

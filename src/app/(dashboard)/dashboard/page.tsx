@@ -36,6 +36,7 @@ import { PipelineDonut } from '@/components/dashboard/pipeline-donut'
 import { EventsCalendar } from '@/components/dashboard/events-calendar'
 import { ResponseTimeChart } from '@/components/dashboard/response-time-chart'
 import { ActivityFeed } from '@/components/dashboard/activity-feed'
+import { TasksPanel } from '@/components/dashboard/tasks-panel'
 
 import { useTranslations } from 'next-intl'
 
@@ -235,6 +236,9 @@ export default function DashboardPage() {
 
       {/* Activity feed */}
       <ActivityFeed items={activity} loading={activityLoading} />
+
+      {/* Tasks — deal-linked + standalone reminders, checkbox to mark done */}
+      <TasksPanel />
     </div>
   )
 }
