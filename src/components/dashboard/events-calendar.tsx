@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { addDays, addMonths, format, isSameMonth, isToday, startOfMonth, startOfWeek } from 'date-fns'
 import { enUS, es, ptBR } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, Clock, Plus, Loader2 } from 'lucide-react'
@@ -94,16 +94,45 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
     )
   }, [dateFnsLocale])
 
-  // Scoped to the currently-viewed month (not "all future events ever")
-  // so a newly-added event shows up immediately with zero extra
-  // configuration, and old accumulated events don't pile up forever.
+  // Every event from today onward, regardless of which month is
+  // currently viewed in the grid above — an event drops off the list
+  // the day AFTER it happens (a same-day event still shows even once
+  // its time has passed), compared by local calendar day so this can't
+  // shift a day off around a timezone boundary the way a raw
+  // millisecond comparison could.
   const upcoming = useMemo(() => {
+    const todayKey = localDayKey(new Date())
     return (events ?? [])
-      .filter((e) => isSameMonth(new Date(e.date), month))
+      .filter((e) => localDayKey(e.date) >= todayKey)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-  }, [events, month])
+  }, [events])
 
   const selectedEvents = selectedKey ? byDay.get(selectedKey) ?? [] : []
+
+  // Swipe-to-navigate on touch devices — an alternative to the arrow
+  // buttons, not a replacement (those still work everywhere). Only
+  // triggers on a mostly-horizontal drag past a small threshold so an
+  // ordinary vertical page scroll starting on the grid doesn't
+  // accidentally flip the month.
+  const touchStart = useRef<{ x: number; y: number } | null>(null)
+  const SWIPE_THRESHOLD_PX = 50
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0]
+    touchStart.current = { x: touch.clientX, y: touch.clientY }
+  }, [])
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const start = touchStart.current
+    touchStart.current = null
+    if (!start) return
+    const touch = e.changedTouches[0]
+    const deltaX = touch.clientX - start.x
+    const deltaY = touch.clientY - start.y
+    if (Math.abs(deltaX) > SWIPE_THRESHOLD_PX && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+      setMonth((m) => addMonths(m, deltaX < 0 ? 1 : -1))
+    }
+  }, [])
 
   const handleSelectDay = useCallback((key: string) => {
     setSelectedKey((prev) => (prev === key ? null : key))
@@ -208,7 +237,11 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
               </button>
             </div>
 
-            <div className="mt-4 rounded-lg bg-muted/40 p-2.5">
+            <div
+              className="mt-4 rounded-lg bg-muted/40 p-2.5"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
               <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 {weekdayLabels.map((d, i) => (
                   <span key={i}>{d}</span>
