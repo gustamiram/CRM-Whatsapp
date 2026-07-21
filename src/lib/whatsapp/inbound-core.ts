@@ -574,11 +574,18 @@ export async function ingestAgentSentMessage(input: AgentSentMessage): Promise<v
     mediaUrl,
   } = input;
 
+  // NOT `customerName || customerPhone` — a fromMe (agent-sent-from-
+  // phone) event never carries the customer's real name (`sender`/
+  // `senderName` there are the AGENT's own identity, not the
+  // customer's), so falling back to the phone here would permanently
+  // poison contacts.name exactly like the bug findOrCreateContact's own
+  // docstring warns against, blocking the customer's real name from
+  // ever backfilling once they message in themselves.
   const contactOutcome = await findOrCreateContact(
     accountId,
     configOwnerUserId,
     customerPhone,
-    customerName || customerPhone
+    customerName
   );
   if (!contactOutcome) return;
   const contactRecord = contactOutcome.contact;
