@@ -23,7 +23,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -478,14 +477,11 @@ export function DealForm({
             </SheetTitle>
           </SheetHeader>
 
-          <Tabs defaultValue="dados" className="flex min-w-0 min-h-0 flex-1 flex-col gap-0">
-            <TabsList className="mx-4 mt-3 bg-muted/50">
-              <TabsTrigger value="dados">{t("tabDados")}</TabsTrigger>
-              <TabsTrigger value="tarefas">{t("tabTarefas")}</TabsTrigger>
-              <TabsTrigger value="anexos">{t("tabAnexos")}</TabsTrigger>
-            </TabsList>
-
-          <TabsContent value="dados" className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+            <section className="space-y-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("tabDados")}
+              </h3>
             <div className="grid gap-2">
               <Label className="text-muted-foreground">{t("title")}</Label>
               <Input
@@ -729,19 +725,18 @@ export function DealForm({
                 )}
               </div>
             )}
-          </TabsContent>
+            </section>
 
-          <TabsContent value="tarefas" className="flex-1 overflow-y-auto p-4 space-y-4">
+            <section className="space-y-4 border-t border-border/50 pt-6">
+              <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <ListChecks className="h-3.5 w-3.5" />
+                {t("tabTarefas")}
+              </h3>
             {!deal ? (
               <p className="text-xs text-muted-foreground">{t("saveDealFirstForTasks")}</p>
             ) : (
               <>
                 <div className="space-y-2 rounded-lg border border-border bg-muted/50 p-3">
-                  <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    <ListChecks className="h-3 w-3" />
-                    {t("tasks")}
-                  </p>
-
                   <button
                     type="button"
                     onClick={handleToggleShowDone}
@@ -917,9 +912,12 @@ export function DealForm({
                 )}
               </>
             )}
-          </TabsContent>
+            </section>
 
-          <TabsContent value="anexos" className="flex-1 overflow-y-auto p-4 space-y-4">
+            <section className="space-y-4 border-t border-border/50 pt-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("tabAnexos")}
+              </h3>
             <div className="grid gap-2">
               <Label className="text-muted-foreground">{t("attachment")}</Label>
               <input
@@ -979,8 +977,8 @@ export function DealForm({
                 </button>
               )}
             </div>
-          </TabsContent>
-          </Tabs>
+            </section>
+          </div>
 
           <div className="border-t border-border/50 bg-popover/80 p-4">
             <div className="flex gap-2">

@@ -38,6 +38,8 @@ export function TasksPanel() {
   const { accountId } = useAuth()
 
   const [tasks, setTasks] = useState<Task[] | null>(null)
+  const [doneTasks, setDoneTasks] = useState<Task[]>([])
+  const [showDoneTasks, setShowDoneTasks] = useState(false)
   const [contacts, setContacts] = useState<Contact[]>([])
 
   const [title, setTitle] = useState('')
@@ -56,6 +58,17 @@ export function TasksPanel() {
       .order('created_at', { ascending: false })
       .limit(20)
     setTasks((data ?? []) as Task[])
+  }, [])
+
+  const fetchDoneTasks = useCallback(async () => {
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('tasks')
+      .select('*, deal:deals(title), contact:contacts(name, phone)')
+      .eq('status', 'done')
+      .order('completed_at', { ascending: false })
+      .limit(20)
+    setDoneTasks((data ?? []) as Task[])
   }, [])
 
   useEffect(() => {
@@ -77,39 +90,42 @@ export function TasksPanel() {
     }
   }, [])
 
-  async function handleToggle(task: Task) {
+  // Toggling moves a task between the pending list and the "Tarefas
+  // verificadas" one, so both are refetched rather than patched
+  // in-place — same approach as the deal-form's Tarefas tab.
+  async function handleToggleTask(task: Task) {
     const supabase = createClient()
     const done = task.status !== 'done'
-    setTasks((prev) =>
-      (prev ?? []).map((tk) =>
-        tk.id === task.id
-          ? { ...tk, status: done ? 'done' : 'pending', completed_at: done ? new Date().toISOString() : null }
-          : tk,
-      ),
-    )
-    // Marking done drops it out of this pending-only list; a stale
-    // pending toggle re-syncs on the next fetch either way.
-    if (done) {
-      setTimeout(() => setTasks((prev) => (prev ?? []).filter((tk) => tk.id !== task.id)), 300)
-    }
     const { error } = await supabase
       .from('tasks')
       .update({ status: done ? 'done' : 'pending', completed_at: done ? new Date().toISOString() : null })
       .eq('id', task.id)
     if (error) {
       toast.error(t('toastFailedUpdate'))
-      void fetchTasks()
+      return
     }
+    void fetchTasks()
+    if (showDoneTasks) void fetchDoneTasks()
   }
 
   async function handleDelete(task: Task) {
     const supabase = createClient()
     setTasks((prev) => (prev ?? []).filter((tk) => tk.id !== task.id))
+    setDoneTasks((prev) => prev.filter((tk) => tk.id !== task.id))
     const { error } = await supabase.from('tasks').delete().eq('id', task.id)
     if (error) {
       toast.error(t('toastFailedDelete'))
       void fetchTasks()
+      if (showDoneTasks) void fetchDoneTasks()
     }
+  }
+
+  function handleToggleShowDone() {
+    setShowDoneTasks((prev) => {
+      const next = !prev
+      if (next) void fetchDoneTasks()
+      return next
+    })
   }
 
   async function handleAdd() {
@@ -158,6 +174,68 @@ export function TasksPanel() {
           <Skeleton className="h-40 w-full" />
         ) : (
           <>
+            <button
+              type="button"
+              onClick={handleToggleShowDone}
+              className="mb-3 text-xs font-medium text-primary hover:underline"
+            >
+              {showDoneTasks ? t('hideDoneTasks') : t('showDoneTasks')}
+            </button>
+
+            {showDoneTasks && (
+              <div className="mb-3 space-y-1.5 border-l-2 border-border pl-2">
+                {doneTasks.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{t('noDoneTasks')}</p>
+                ) : (
+                  doneTasks.map((task) => (
+                    <label
+                      key={task.id}
+                      className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        checked
+                        onChange={() => handleToggleTask(task)}
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-muted-foreground line-through">{task.title}</p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                          {(task.deal?.title || task.contact?.name || task.contact?.phone) && (
+                            <span className="truncate">
+                              {task.deal?.title || task.contact?.name || task.contact?.phone}
+                            </span>
+                          )}
+                          {task.completed_at && (
+                            <span>
+                              {new Date(task.completed_at).toLocaleString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleDelete(task)
+                        }}
+                        aria-label={t('deleteTask')}
+                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
+
             <div className="space-y-1.5">
               {tasks.length === 0 ? (
                 <p className="text-xs text-muted-foreground">{t('noTasks')}</p>
@@ -172,7 +250,7 @@ export function TasksPanel() {
                       <input
                         type="checkbox"
                         checked={task.status === 'done'}
-                        onChange={() => handleToggle(task)}
+                        onChange={() => handleToggleTask(task)}
                         className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
                       />
                       <div className="min-w-0 flex-1">
