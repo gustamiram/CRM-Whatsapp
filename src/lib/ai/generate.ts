@@ -5,7 +5,7 @@ import {
   type ChatMessage,
   type GenerateResult,
 } from './types'
-import { HANDOFF_SENTINEL, aiRequestTimeoutMs } from './defaults'
+import { HANDOFF_SENTINEL, OBJECTIVE_COMPLETE_SENTINEL, aiRequestTimeoutMs } from './defaults'
 import { generateOpenAi } from './providers/openai'
 import { generateAnthropic } from './providers/anthropic'
 
@@ -63,6 +63,12 @@ export function parseGeneration(
   usage: AiUsage | null = null,
 ): GenerateResult {
   const handoff = raw.includes(HANDOFF_SENTINEL)
-  const text = raw.split(HANDOFF_SENTINEL).join('').trim()
-  return { text, handoff, usage }
+  const done = raw.includes(OBJECTIVE_COMPLETE_SENTINEL)
+  const text = raw
+    .split(HANDOFF_SENTINEL)
+    .join('')
+    .split(OBJECTIVE_COMPLETE_SENTINEL)
+    .join('')
+    .trim()
+  return { text, handoff, done, usage }
 }

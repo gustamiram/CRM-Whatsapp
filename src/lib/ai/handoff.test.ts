@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildHandoffSummary } from './handoff'
+import { buildHandoffSummary, buildObjectiveCompleteSummary } from './handoff'
 
 describe('buildHandoffSummary', () => {
   it('notes the reply count and quotes the last customer message', () => {
@@ -62,5 +62,35 @@ describe('buildHandoffSummary', () => {
       replyCount: 0,
     })
     expect(summary).toBe('🤖 AI agent handed off without replying.')
+  })
+})
+
+describe('buildObjectiveCompleteSummary', () => {
+  it('quotes the last customer message', () => {
+    const summary = buildObjectiveCompleteSummary({
+      messages: [
+        { role: 'user', content: 'my name is Jane' },
+        { role: 'assistant', content: 'Thanks Jane!' },
+        { role: 'user', content: 'jane@example.com' },
+      ],
+    })
+    expect(summary).toBe(
+      '🤖 AI agent completed its configured objective and stopped auto-replying. Last customer message: “jane@example.com”',
+    )
+  })
+
+  it('degrades gracefully when there is no customer message', () => {
+    const summary = buildObjectiveCompleteSummary({
+      messages: [{ role: 'assistant', content: 'greeting' }],
+    })
+    expect(summary).toBe('🤖 AI agent completed its configured objective and stopped auto-replying.')
+  })
+
+  it('reads distinctly from the handoff summary (not an escalation)', () => {
+    const messages = [{ role: 'user' as const, content: 'ok great' }]
+    const handoff = buildHandoffSummary({ messages, replyCount: 1 })
+    const done = buildObjectiveCompleteSummary({ messages })
+    expect(done).not.toBe(handoff)
+    expect(done).not.toContain('handed off')
   })
 })

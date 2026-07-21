@@ -301,6 +301,41 @@ describe('dispatchInboundToAiReply — handoff', () => {
   })
 })
 
+describe('dispatchInboundToAiReply — objective complete', () => {
+  it('sends the final message, then pauses auto-reply with a distinct (non-handoff) note', async () => {
+    h.generateReply.mockResolvedValue({ text: 'Perfeito, já tenho tudo que preciso!', handoff: false, done: true })
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Perfeito, já tenho tudo que preciso!' }),
+    )
+    expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true })
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain('completed its configured objective')
+    expect(h.state.updatePayload).not.toHaveProperty('assigned_agent_id')
+  })
+
+  it('pauses without sending when done and there is no final text, without human-escalation side effects', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ handoffAgentId: 'agent-7' }))
+    h.generateReply.mockResolvedValue({ text: '', handoff: false, done: true })
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.engineSendText).not.toHaveBeenCalled()
+    expect(h.state.rpcCalls).toHaveLength(0)
+    expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true })
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain('completed its configured objective')
+    // Unlike a real handoff, a configured handoff agent is never assigned here.
+    expect(h.state.updatePayload).not.toHaveProperty('assigned_agent_id')
+  })
+
+  it('handoff wins if the model somehow signals both', async () => {
+    h.generateReply.mockResolvedValue({ text: '', handoff: true, done: true })
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.engineSendText).not.toHaveBeenCalled()
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain('AI agent handed off')
+  })
+})
+
 describe('dispatchInboundToAiReply — debounce', () => {
   beforeEach(() => {
     vi.useFakeTimers()

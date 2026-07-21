@@ -22,6 +22,16 @@ export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
  */
 export const HANDOFF_SENTINEL = '[[HANDOFF]]'
 
+/**
+ * Sentinel the model is instructed to emit (in auto-reply mode) when
+ * the goal/script described in the account's own instructions has been
+ * fully accomplished — e.g. all the information a configured flow asks
+ * for has been collected. Distinct from HANDOFF_SENTINEL: this isn't
+ * "I need a human", it's "mission accomplished, stop messaging this
+ * thread." Parsed and stripped by `generateReply`.
+ */
+export const OBJECTIVE_COMPLETE_SENTINEL = '[[DONE]]'
+
 /** Cap on generated reply length — keeps WhatsApp replies short and
  *  bounds token spend on the caller's own key. */
 export const MAX_OUTPUT_TOKENS = 1024
@@ -75,6 +85,9 @@ export function buildSystemPrompt(args: {
   if (mode === 'auto_reply') {
     parts.push(
       `You are replying automatically with no human in the loop. If you cannot confidently and safely help — the customer explicitly asks for a human, is upset or complaining, or the request needs information you do not have — reply with exactly ${HANDOFF_SENTINEL} and nothing else. A human agent will then take over. Prefer handing off over guessing.`,
+    )
+    parts.push(
+      `Separately: if the business context below describes a specific goal, script, or set of information to collect from the customer, and you have now fully accomplished it — you have everything you need and there is nothing further to ask or say — end your reply with exactly ${OBJECTIVE_COMPLETE_SENTINEL} on its own, on the last line. This stops you from continuing to reply automatically in this conversation; a team member can resume you manually later if needed. Only use this once the objective is genuinely complete — never to end a single turn while more is still needed, and never together with ${HANDOFF_SENTINEL}.`,
     )
   }
 

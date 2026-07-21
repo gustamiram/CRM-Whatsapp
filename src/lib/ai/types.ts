@@ -61,10 +61,14 @@ export interface ProviderResult {
 
 /** Outcome of a generation call. */
 export interface GenerateResult {
-  /** The reply text, with any handoff sentinel stripped. */
+  /** The reply text, with any handoff/objective-complete sentinel stripped. */
   text: string
   /** True when the model asked to hand off to a human (auto-reply mode). */
   handoff: boolean
+  /** True when the model signaled it has fully accomplished the goal
+   *  described in the account's own instructions (auto-reply mode) —
+   *  see OBJECTIVE_COMPLETE_SENTINEL in ./defaults. */
+  done: boolean
   /** Provider token usage for this call, or null when unavailable. */
   usage: AiUsage | null
 }

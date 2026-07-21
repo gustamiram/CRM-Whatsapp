@@ -6,7 +6,7 @@ import { retrieveUpcomingEvents } from './events'
 import { generateReply } from './generate'
 import { buildSystemPrompt, aiContextMessageLimit } from './defaults'
 import { getConversationMemory, refreshConversationMemoryIfDue } from './memory'
-import { buildHandoffSummary } from './handoff'
+import { buildHandoffSummary, buildObjectiveCompleteSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { findMatchingAiMediaRule, sendAiMediaRule } from './media-rules'
@@ -46,7 +46,8 @@ interface DispatchArgs {
  * Eligibility gates (any → silent no-op):
  *   - AI off / auto-reply disabled for the account
  *   - a human agent is assigned (they own the thread)
- *   - auto-reply was disabled for this conversation (prior handoff)
+ *   - auto-reply was disabled for this conversation (prior handoff, or
+ *     the model previously signaled its configured objective was done)
  *   - the per-conversation reply cap is reached
  *   - there's nothing to reply to
  *
@@ -229,7 +230,7 @@ export async function dispatchInboundToAiReply(
       memory,
     })
 
-    const { text, handoff, usage } = await generateReply({
+    const { text, handoff, done, usage } = await generateReply({
       config,
       systemPrompt,
       messages,
@@ -249,7 +250,7 @@ export async function dispatchInboundToAiReply(
       usage,
     })
 
-    if (handoff || !text) {
+    if (handoff || (!text && !done)) {
       // The model can't (or shouldn't) answer — stop auto-replying on
       // this thread and hand it to a human. We (a) pause the bot here
       // (sticky until re-enabled), (b) route the conversation to the
@@ -271,6 +272,22 @@ export async function dispatchInboundToAiReply(
         update.assigned_agent_id = config.handoffAgentId
       }
       await db.from('conversations').update(update).eq('id', conversationId)
+      return
+    }
+
+    if (!text && done) {
+      // The model signaled its configured objective is complete with
+      // nothing further to say — pause quietly, same mechanism as a
+      // handoff (ai_autoreply_disabled) but with none of its
+      // human-escalation side effects: no assignee change, and a
+      // distinct note so the paused banner doesn't read as urgent.
+      await db
+        .from('conversations')
+        .update({
+          ai_autoreply_disabled: true,
+          ai_handoff_summary: buildObjectiveCompleteSummary({ messages }),
+        })
+        .eq('id', conversationId)
       return
     }
 
@@ -304,6 +321,18 @@ export async function dispatchInboundToAiReply(
       text,
       aiGenerated: true,
     })
+
+    if (done) {
+      // Sent a final wrap-up message, then pauses — same quiet stop as
+      // the no-text case above, just after actually delivering the text.
+      await db
+        .from('conversations')
+        .update({
+          ai_autoreply_disabled: true,
+          ai_handoff_summary: buildObjectiveCompleteSummary({ messages }),
+        })
+        .eq('id', conversationId)
+    }
 
     // Fire-and-forget: never adds latency to the customer-facing send,
     // and internally no-ops unless enough new messages have scrolled

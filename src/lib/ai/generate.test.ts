@@ -44,6 +44,7 @@ describe('parseGeneration', () => {
     expect(parseGeneration('Hello there')).toEqual({
       text: 'Hello there',
       handoff: false,
+      done: false,
       usage: null,
     })
   })
@@ -52,11 +53,28 @@ describe('parseGeneration', () => {
     expect(parseGeneration('[[HANDOFF]]')).toEqual({
       text: '',
       handoff: true,
+      done: false,
       usage: null,
     })
     expect(parseGeneration('Let me get a human [[HANDOFF]]')).toEqual({
       text: 'Let me get a human',
       handoff: true,
+      done: false,
+      usage: null,
+    })
+  })
+
+  it('detects + strips the objective-complete sentinel', () => {
+    expect(parseGeneration('[[DONE]]')).toEqual({
+      text: '',
+      handoff: false,
+      done: true,
+      usage: null,
+    })
+    expect(parseGeneration('Perfeito, já tenho tudo! [[DONE]]')).toEqual({
+      text: 'Perfeito, já tenho tudo!',
+      handoff: false,
+      done: true,
       usage: null,
     })
   })
@@ -66,6 +84,7 @@ describe('parseGeneration', () => {
     expect(parseGeneration('Hi', usage)).toEqual({
       text: 'Hi',
       handoff: false,
+      done: false,
       usage,
     })
   })
@@ -90,6 +109,7 @@ describe('generateReply — OpenAI', () => {
     expect(res).toEqual({
       text: 'Sure — happy to help!',
       handoff: false,
+      done: false,
       usage: { promptTokens: 42, completionTokens: 8, totalTokens: 50 },
     })
     const [url, opts] = fetchMock.mock.calls[0]
@@ -149,6 +169,7 @@ describe('generateReply — Anthropic', () => {
     expect(res).toEqual({
       text: 'Hi there!',
       handoff: false,
+      done: false,
       usage: { promptTokens: 30, completionTokens: 6, totalTokens: 36 },
     })
     const [url, opts] = fetchMock.mock.calls[0]
