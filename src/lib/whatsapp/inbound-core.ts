@@ -21,6 +21,8 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
+import { loadAiConfig } from '@/lib/ai/config';
+import { interpretInboundMedia } from '@/lib/ai/media-interpret';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { autoAddContactToDefaultPipeline } from '@/lib/pipelines/auto-add-to-pipeline';
 
@@ -372,21 +374,55 @@ export async function ingestInboundMessage(input: InboundMessage): Promise<void>
     .eq('sender_type', 'customer');
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0;
 
-  const { error: msgError } = await supabaseAdmin().from('messages').insert({
-    conversation_id: conversation.id,
-    sender_type: 'customer',
-    content_type: contentType,
-    content_text: contentText,
-    media_url: mediaUrl,
-    message_id: providerMessageId,
-    status: 'delivered',
-    created_at: new Date(timestampMs).toISOString(),
-    reply_to_message_id: replyToInternalId,
-    interactive_reply_id: interactiveReplyId,
-  });
+  const { data: insertedMessage, error: msgError } = await supabaseAdmin()
+    .from('messages')
+    .insert({
+      conversation_id: conversation.id,
+      sender_type: 'customer',
+      content_type: contentType,
+      content_text: contentText,
+      media_url: mediaUrl,
+      message_id: providerMessageId,
+      status: 'delivered',
+      created_at: new Date(timestampMs).toISOString(),
+      reply_to_message_id: replyToInternalId,
+      interactive_reply_id: interactiveReplyId,
+    })
+    .select('id')
+    .single();
   if (msgError) {
     console.error('[inbound] Error inserting message:', msgError);
     return;
+  }
+
+  // One-time image caption / voice-note transcript, cached on the
+  // message row so buildConversationContext (src/lib/ai/context.ts)
+  // can feed it to the AI on every later reply without re-describing
+  // or re-transcribing the same media. Awaited (not fire-and-forget) —
+  // same reasoning as the automations dispatch below: this function
+  // runs inside the webhook route's `after()`, and only promises
+  // actually chained off what it awaits are guaranteed to survive.
+  // Runs before the auto-reply dispatch further down so a same-turn
+  // reply already has the description available.
+  if ((contentType === 'image' || contentType === 'audio') && mediaUrl) {
+    try {
+      const aiConfig = await loadAiConfig(supabaseAdmin(), accountId);
+      if (aiConfig) {
+        const description = await interpretInboundMedia(aiConfig, {
+          contentType,
+          mediaUrl,
+          existingCaption: contentText,
+        });
+        if (description) {
+          await supabaseAdmin()
+            .from('messages')
+            .update({ ai_media_description: description })
+            .eq('id', insertedMessage.id);
+        }
+      }
+    } catch (err) {
+      console.error('[inbound] media interpretation failed:', err);
+    }
   }
 
   const { error: convError } = await supabaseAdmin()

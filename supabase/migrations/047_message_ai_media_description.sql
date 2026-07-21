@@ -1,0 +1,21 @@
+-- ============================================================
+-- 047_message_ai_media_description.sql
+--
+-- Until now the AI reply context (src/lib/ai/context.ts) only ever
+-- read `content_type = 'text'` messages — image/video/audio/document
+-- messages from a customer were invisible to the AI agent, including
+-- any caption. `ai_media_description` holds a one-time, LLM-generated
+-- interpretation (an image caption, or a voice-note transcript — see
+-- src/lib/ai/media-interpret.ts) computed once at ingestion and cached
+-- here, so every later reply/context-build reuses it instead of
+-- re-describing/re-transcribing the same media.
+--
+-- Deliberately a separate column from `content_text` (which already
+-- holds the customer's own caption, when they wrote one) so the two
+-- can never be confused in the UI — message-bubble.tsx keeps rendering
+-- only `content_text` as a caption; this column is AI-context-only.
+--
+-- Idempotent — safe to run multiple times.
+-- ============================================================
+
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS ai_media_description TEXT;
