@@ -12,8 +12,10 @@ import { useAuth } from '@/hooks/use-auth'
 import { resolveDefaultPipelineStage } from '@/lib/pipelines/resolve-default-stage'
 import type { EventItem } from '@/lib/dashboard/types'
 import { localDayKey } from '@/lib/dashboard/date-utils'
+import type { Deal, PipelineStage } from '@/types'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { DealForm } from '@/components/pipelines/deal-form'
 import { Skeleton } from './skeleton'
 
 interface EventsCalendarProps {
@@ -37,11 +39,12 @@ const DATE_FNS_LOCALES = { en: enUS, 'pt-BR': ptBR, es } as const
  * small dot), and the list below the grid renders as bold day-number
  * cards (day badge + title/contact + time) instead of plain text rows.
  *
- * Clicking ANY day opens a lightweight "add event" row (title + time)
- * so a new event doesn't require the full New Deal form — it creates a
+ * Clicking a day shows that day's existing events (if any) plus a
+ * lightweight "add event" row (title + time) — a new event creates a
  * contactless deal (title + expected_close_date only) in the account's
  * default pipeline's first stage, same resolution helper the Inbox
- * sidebar's "add deal" button uses.
+ * sidebar's "add deal" button uses. Clicking an existing event (in the
+ * day panel or the "upcoming" list) opens it in the full Deal form.
  */
 export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalendarProps) {
   const t = useTranslations('Dashboard.eventsCalendar')
@@ -54,6 +57,14 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
   const [newEventTitle, setNewEventTitle] = useState('')
   const [newEventTime, setNewEventTime] = useState('')
   const [savingEvent, setSavingEvent] = useState(false)
+
+  // Opening an event (from the day panel or the upcoming list) for
+  // editing — resolved on demand since an event's deal can live in any
+  // pipeline, not just the account's default one.
+  const [dealFormOpen, setDealFormOpen] = useState(false)
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null)
+  const [editingPipelineId, setEditingPipelineId] = useState('')
+  const [editingStages, setEditingStages] = useState<PipelineStage[]>([])
 
   const byDay = useMemo(() => {
     const map = new Map<string, EventItem[]>()
@@ -92,10 +103,27 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
   }, [events, month])
 
+  const selectedEvents = selectedKey ? byDay.get(selectedKey) ?? [] : []
+
   const handleSelectDay = useCallback((key: string) => {
     setSelectedKey((prev) => (prev === key ? null : key))
     setNewEventTitle('')
     setNewEventTime('')
+  }, [])
+
+  const openEventDeal = useCallback(async (dealId: string) => {
+    const supabase = createClient()
+    const { data: dealRow } = await supabase.from('deals').select('*').eq('id', dealId).maybeSingle()
+    if (!dealRow) return
+    const { data: stagesData } = await supabase
+      .from('pipeline_stages')
+      .select('*')
+      .eq('pipeline_id', dealRow.pipeline_id)
+      .order('position')
+    setEditingDeal(dealRow as Deal)
+    setEditingPipelineId(dealRow.pipeline_id as string)
+    setEditingStages((stagesData ?? []) as PipelineStage[])
+    setDealFormOpen(true)
   }, [])
 
   const handleAddEvent = useCallback(async () => {
@@ -221,11 +249,28 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
             </div>
 
             {selectedKey && (
-              <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-2.5">
-                {/* Quick add only — existing events for this day are
-                    already visible in the "upcoming" list below, so this
-                    panel stays a pure create action, not a duplicate view. */}
-                <div className="flex gap-1.5">
+              <div className="mt-3 space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-2.5">
+                {selectedEvents.length > 0 && (
+                  <div className="space-y-1.5">
+                    {selectedEvents.map((e) => (
+                      <button
+                        type="button"
+                        key={e.id}
+                        onClick={() => openEventDeal(e.id)}
+                        className="block w-full rounded-md px-1.5 py-1 text-left hover:bg-primary/10"
+                      >
+                        <p className="text-xs font-semibold text-foreground">{e.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(e.date), 'HH:mm')}
+                          {e.contactName ? ` — ${e.contactName}` : ''}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Quick add for a new event on this same day. */}
+                <div className={selectedEvents.length > 0 ? 'flex gap-1.5 border-t border-primary/20 pt-2' : 'flex gap-1.5'}>
                   <Input
                     value={newEventTitle}
                     onChange={(e) => setNewEventTitle(e.target.value)}
@@ -268,9 +313,11 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
                     // alternating card shades) — subtle, not literal color.
                     const strong = i % 2 === 0
                     return (
-                      <div
+                      <button
+                        type="button"
                         key={e.id}
-                        className={`flex items-center gap-3 rounded-xl p-2.5 ${
+                        onClick={() => openEventDeal(e.id)}
+                        className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors hover:brightness-110 ${
                           strong ? 'bg-primary/15' : 'bg-muted'
                         }`}
                       >
@@ -295,7 +342,7 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
                           <Clock className="h-3 w-3" />
                           {format(d, 'HH:mm')}
                         </div>
-                      </div>
+                      </button>
                     )
                   })
                 )}
@@ -304,6 +351,17 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
           </>
         )}
       </div>
+
+      {editingPipelineId && (
+        <DealForm
+          open={dealFormOpen}
+          onOpenChange={setDealFormOpen}
+          deal={editingDeal}
+          pipelineId={editingPipelineId}
+          stages={editingStages}
+          onSaved={() => onEventsChanged?.()}
+        />
+      )}
     </section>
   )
 }

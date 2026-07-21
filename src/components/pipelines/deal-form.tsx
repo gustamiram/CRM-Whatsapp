@@ -120,8 +120,12 @@ export function DealForm({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Tasks — only meaningful once the deal has a real id (a brand-new,
-  // unsaved deal has nothing for tasks.deal_id to reference yet).
+  // unsaved deal has nothing for tasks.deal_id to reference yet). Done
+  // tasks are kept out of the main (pending) list and loaded on demand
+  // behind the "Tarefas verificadas" toggle instead.
   const [dealTasks, setDealTasks] = useState<Task[]>([]);
+  const [doneTasks, setDoneTasks] = useState<Task[]>([]);
+  const [showDoneTasks, setShowDoneTasks] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskType, setNewTaskType] = useState<TaskType>("general");
   const [newTaskDue, setNewTaskDue] = useState("");
@@ -239,15 +243,31 @@ export function DealForm({
       .from("tasks")
       .select("*")
       .eq("deal_id", deal.id)
+      .eq("status", "pending")
       .order("due_at", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: false });
     setDealTasks((data ?? []) as Task[]);
+  }, [deal, supabase]);
+
+  const fetchDoneTasks = useCallback(async () => {
+    if (!deal) return;
+    const { data } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("deal_id", deal.id)
+      .eq("status", "done")
+      .order("completed_at", { ascending: false });
+    setDoneTasks((data ?? []) as Task[]);
   }, [deal, supabase]);
 
   useEffect(() => {
     if (!open || !deal) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDealTasks([]);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDoneTasks([]);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowDoneTasks(false);
       return;
     }
     void fetchDealTasks();
@@ -281,33 +301,41 @@ export function DealForm({
     void fetchDealTasks();
   }
 
+  // Toggling moves a task between the pending list and the "Tarefas
+  // verificadas" one, so both are refetched rather than patched
+  // in-place — simpler than manually keeping two arrays in sync, and
+  // this isn't a hot enough path to need the extra optimism.
   async function handleToggleTask(task: Task) {
     const done = task.status !== "done";
-    // Optimistic — a stale toggle re-syncs on the next fetchDealTasks.
-    setDealTasks((prev) =>
-      prev.map((tk) =>
-        tk.id === task.id
-          ? { ...tk, status: done ? "done" : "pending", completed_at: done ? new Date().toISOString() : null }
-          : tk,
-      ),
-    );
     const { error } = await supabase
       .from("tasks")
       .update({ status: done ? "done" : "pending", completed_at: done ? new Date().toISOString() : null })
       .eq("id", task.id);
     if (error) {
       toast.error(t("toastFailedTaskUpdate"));
-      void fetchDealTasks();
+      return;
     }
+    void fetchDealTasks();
+    if (showDoneTasks) void fetchDoneTasks();
   }
 
   async function handleDeleteTask(task: Task) {
     setDealTasks((prev) => prev.filter((tk) => tk.id !== task.id));
+    setDoneTasks((prev) => prev.filter((tk) => tk.id !== task.id));
     const { error } = await supabase.from("tasks").delete().eq("id", task.id);
     if (error) {
       toast.error(t("toastFailedDeleteTask"));
       void fetchDealTasks();
+      if (showDoneTasks) void fetchDoneTasks();
     }
+  }
+
+  function handleToggleShowDone() {
+    setShowDoneTasks((prev) => {
+      const next = !prev;
+      if (next) void fetchDoneTasks();
+      return next;
+    });
   }
 
   const handleCopyPhone = useCallback(async () => {
@@ -450,7 +478,7 @@ export function DealForm({
             </SheetTitle>
           </SheetHeader>
 
-          <Tabs defaultValue="dados" className="flex min-h-0 flex-1 flex-col gap-0">
+          <Tabs defaultValue="dados" className="flex min-w-0 min-h-0 flex-1 flex-col gap-0">
             <TabsList className="mx-4 mt-3 bg-muted/50">
               <TabsTrigger value="dados">{t("tabDados")}</TabsTrigger>
               <TabsTrigger value="tarefas">{t("tabTarefas")}</TabsTrigger>
@@ -656,19 +684,19 @@ export function DealForm({
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   {t("status")}
                 </p>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <Button
                     type="button"
                     onClick={() => handleStatusChange("won")}
                     disabled={!!statusAction || deal.status === "won"}
-                    className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    className="min-w-0 bg-primary px-1.5 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                   >
                     {statusAction === "won" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                     ) : (
                       <>
-                        <Check className="mr-1 h-4 w-4" />
-                        {t("markAsWon")}
+                        <Check className="mr-1 h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate text-xs">{t("markAsWon")}</span>
                       </>
                     )}
                   </Button>
@@ -676,14 +704,14 @@ export function DealForm({
                     type="button"
                     onClick={() => handleStatusChange("lost")}
                     disabled={!!statusAction || deal.status === "lost"}
-                    className="flex-1 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                    className="min-w-0 bg-red-600 px-1.5 text-white hover:bg-red-700 disabled:opacity-50"
                   >
                     {statusAction === "lost" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                     ) : (
                       <>
-                        <X className="mr-1 h-4 w-4" />
-                        {t("markAsLost")}
+                        <X className="mr-1 h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate text-xs">{t("markAsLost")}</span>
                       </>
                     )}
                   </Button>
@@ -713,6 +741,61 @@ export function DealForm({
                     <ListChecks className="h-3 w-3" />
                     {t("tasks")}
                   </p>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleShowDone}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    {showDoneTasks ? t("hideDoneTasks") : t("showDoneTasks")}
+                  </button>
+
+                  {showDoneTasks && (
+                    <div className="space-y-1.5 border-l-2 border-border pl-2">
+                      {doneTasks.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">{t("noDoneTasks")}</p>
+                      ) : (
+                        doneTasks.map((task) => (
+                          <label
+                            key={task.id}
+                            className="flex items-start gap-2 rounded-md bg-muted px-2 py-1.5 text-xs"
+                          >
+                            <input
+                              type="checkbox"
+                              checked
+                              onChange={() => handleToggleTask(task)}
+                              className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-muted-foreground line-through">{task.title}</p>
+                              {task.completed_at && (
+                                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                  {new Date(task.completed_at).toLocaleString(undefined, {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleDeleteTask(task);
+                              }}
+                              aria-label={t("deleteTask")}
+                              className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  )}
 
                   {dealTasks.length > 0 && (
                     <div className="space-y-1.5">

@@ -90,7 +90,12 @@ export function RecurringTaskForm({ accountId, dealId, contactId, onGenerated }:
         className="h-9 border-border bg-muted text-sm text-foreground"
       />
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {/* Always 2 columns, not a viewport `sm:` breakpoint — this form
+          renders both in the narrow Deal-form Sheet (a fixed side panel,
+          always narrow regardless of the browser's own width) and the
+          full-width standalone Tasks panel, and a 4-col row overflows
+          the Sheet at wider browser viewports. */}
+      <div className="grid grid-cols-2 gap-2">
         <div className="grid gap-1">
           <Label className="text-[11px] text-muted-foreground">{t("startDate")}</Label>
           <Input
