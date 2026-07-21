@@ -30,8 +30,11 @@ export const metadata: Metadata = {
     index: false,
     follow: false,
   },
-  // No explicit `icons` override — src/app/favicon.ico (file
-  // convention) is auto-detected and injected by Next.js itself.
+  // No explicit `icons` override — favicon.ico/icon.svg/apple-icon.png
+  // (file conventions) are auto-detected and injected by Next.js itself.
+  appleWebApp: {
+    title: "M.MStoryMaker",
+  },
   formatDetection: {
     email: false,
     address: false,
