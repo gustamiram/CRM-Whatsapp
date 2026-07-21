@@ -82,6 +82,7 @@
         "billing": "Pagamento",
         "proposal_followup": "Retorno de proposta"
       },
+      "aiMessageEnabled": "Enviar automaticamente por IA",
       "generateButton": "Gerar {count} {count, plural, =1 {tarefa} other {tarefas}}",
       "toastGenerated": "{count} {count, plural, =1 {tarefa gerada} other {tarefas geradas}}",
       "toastFailed": "Falha ao gerar as tarefas"
@@ -169,6 +170,9 @@
       "showDoneTasks": "Tarefas verificadas",
       "hideDoneTasks": "Ocultar tarefas verificadas",
       "noDoneTasks": "Nenhuma tarefa verificada ainda",
+      "aiMessageEnabled": "Enviar automaticamente por IA",
+      "aiMessageOn": "IA ativa",
+      "aiMessageOff": "IA pausada",
       "reminderSent": "Lembrete enviado",
       "reminderBlocked": "Lembrete bloqueado — fora da janela de 24h",
       "toastFailedUpdate": "Falha ao atualizar a tarefa",
@@ -606,6 +610,9 @@
       },
       "taskTitlePlaceholder": "Nova tarefa...",
       "addTask": "Adicionar tarefa",
+      "aiMessageEnabled": "Enviar automaticamente por IA",
+      "aiMessageOn": "IA ativa",
+      "aiMessageOff": "IA pausada",
       "reminderSent": "Lembrete enviado",
       "reminderBlocked": "Lembrete bloqueado — fora da janela de 24h",
       "deleteTask": "Excluir tarefa",

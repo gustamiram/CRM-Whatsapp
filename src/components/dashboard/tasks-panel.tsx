@@ -11,6 +11,7 @@ import type { Contact, Task, TaskType } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RecurringTaskForm } from '@/components/tasks/recurring-task-form'
+import { isAiSendTaskType } from '@/lib/tasks/ai-send-types'
 import { Skeleton } from './skeleton'
 
 // Module-level plain function (not inlined in the component body) so the
@@ -18,14 +19,6 @@ import { Skeleton } from './skeleton'
 // same pattern as `isUpcoming` in events-calendar.tsx.
 function isOverdue(dueAtIso: string): boolean {
   return new Date(dueAtIso).getTime() < Date.now()
-}
-
-// Both AI-auto-send task types (billing reminders, proposal
-// follow-ups — see src/lib/tasks/engine.ts) need a resolvable contact
-// to message; a standalone task with neither a deal nor a contact
-// picked has nobody to send to.
-function taskNeedsContact(taskType: TaskType): boolean {
-  return taskType === 'billing' || taskType === 'proposal_followup'
 }
 
 /**
@@ -54,6 +47,7 @@ export function TasksPanel() {
   const [taskType, setTaskType] = useState<TaskType>('general')
   const [dueAt, setDueAt] = useState('')
   const [contactId, setContactId] = useState('')
+  const [aiEnabled, setAiEnabled] = useState(true)
   const [adding, setAdding] = useState(false)
 
   const fetchTasks = useCallback(async () => {
@@ -116,6 +110,17 @@ export function TasksPanel() {
     if (showDoneTasks) void fetchDoneTasks()
   }
 
+  async function handleToggleAiEnabled(task: Task) {
+    const supabase = createClient()
+    const next = !task.ai_message_enabled
+    setTasks((prev) => (prev ?? []).map((tk) => (tk.id === task.id ? { ...tk, ai_message_enabled: next } : tk)))
+    const { error } = await supabase.from('tasks').update({ ai_message_enabled: next }).eq('id', task.id)
+    if (error) {
+      toast.error(t('toastFailedUpdate'))
+      void fetchTasks()
+    }
+  }
+
   async function handleDelete(task: Task) {
     const supabase = createClient()
     setTasks((prev) => (prev ?? []).filter((tk) => tk.id !== task.id))
@@ -138,7 +143,7 @@ export function TasksPanel() {
 
   async function handleAdd() {
     if (!title.trim() || !accountId) return
-    if (taskNeedsContact(taskType) && !contactId) {
+    if (isAiSendTaskType(taskType) && !contactId) {
       toast.error(t('toastBillingNeedsContact'))
       return
     }
@@ -154,6 +159,7 @@ export function TasksPanel() {
       title: title.trim(),
       task_type: taskType,
       due_at: dueAt ? new Date(dueAt).toISOString() : null,
+      ai_message_enabled: aiEnabled,
     })
     setAdding(false)
     if (error) {
@@ -164,6 +170,7 @@ export function TasksPanel() {
     setTaskType('general')
     setDueAt('')
     setContactId('')
+    setAiEnabled(true)
     void fetchTasks()
   }
 
@@ -296,6 +303,23 @@ export function TasksPanel() {
                           {task.reminder_status === 'blocked_window' && (
                             <span className="text-red-400">{t('reminderBlocked')}</span>
                           )}
+                          {isAiSendTaskType(task.task_type) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleToggleAiEnabled(task)
+                              }}
+                              className={
+                                task.ai_message_enabled
+                                  ? 'rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-emerald-400'
+                                  : 'rounded-full bg-muted-foreground/20 px-1.5 py-0.5 text-muted-foreground'
+                              }
+                            >
+                              {task.ai_message_enabled ? t('aiMessageOn') : t('aiMessageOff')}
+                            </button>
+                          )}
                         </div>
                       </div>
                       <button
@@ -339,7 +363,7 @@ export function TasksPanel() {
                 onChange={(e) => setDueAt(e.target.value)}
                 className="h-8 border-border bg-muted text-xs text-foreground"
               />
-              {taskNeedsContact(taskType) ? (
+              {isAiSendTaskType(taskType) ? (
                 <select
                   value={contactId}
                   onChange={(e) => setContactId(e.target.value)}
@@ -363,7 +387,18 @@ export function TasksPanel() {
                   {t('addTask')}
                 </Button>
               )}
-              {taskNeedsContact(taskType) && (
+              {isAiSendTaskType(taskType) && (
+                <label className="col-span-2 flex items-center gap-1.5 text-[11px] text-muted-foreground sm:col-span-4">
+                  <input
+                    type="checkbox"
+                    checked={aiEnabled}
+                    onChange={(e) => setAiEnabled(e.target.checked)}
+                    className="h-3 w-3 shrink-0 accent-primary"
+                  />
+                  {t('aiMessageEnabled')}
+                </label>
+              )}
+              {isAiSendTaskType(taskType) && (
                 <Button
                   type="button"
                   onClick={handleAdd}

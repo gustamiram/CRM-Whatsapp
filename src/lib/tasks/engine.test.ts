@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
     waConfig: null as Record<string, unknown> | null,
     lastCustomerMessage: null as Record<string, unknown> | null,
     updates: [] as { id: string; patch: Record<string, unknown> }[],
+    dueTasksEqCalls: [] as [string, unknown][],
   },
 }))
 
@@ -29,7 +30,10 @@ vi.mock('./admin-client', () => ({
         // no .maybeSingle()) and the per-task status UPDATE.
         const chain = {
           select: () => chain,
-          eq: () => chain,
+          eq: (col: string, val: unknown) => {
+            h.state.dueTasksEqCalls.push([col, val])
+            return chain
+          },
           is: () => chain,
           lte: () => chain,
           limit: () => Promise.resolve({ data: h.state.dueTasks, error: null }),
@@ -125,6 +129,7 @@ beforeEach(() => {
   h.state.waConfig = { provider: 'uazapi', user_id: 'user-1' }
   h.state.lastCustomerMessage = null
   h.state.updates = []
+  h.state.dueTasksEqCalls = []
   h.loadAiConfig.mockResolvedValue(aiConfig())
   h.generateReply.mockResolvedValue({ text: 'Hi Jane, friendly reminder about your deposit.', handoff: false, usage: null })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'wamid-1' })
@@ -219,6 +224,12 @@ describe('processDueBillingTasks', () => {
     h.state.dueTasks = []
     await processDueBillingTasks()
     expect(h.generateReply).not.toHaveBeenCalled()
+  })
+
+  it('only queries pending, not-yet-reminded tasks with the per-task AI toggle on', async () => {
+    await processDueBillingTasks()
+    expect(h.state.dueTasksEqCalls).toContainEqual(['ai_message_enabled', true])
+    expect(h.state.dueTasksEqCalls).toContainEqual(['status', 'pending'])
   })
 })
 

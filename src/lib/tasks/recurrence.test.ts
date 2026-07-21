@@ -75,4 +75,27 @@ describe("buildRecurringTaskRows", () => {
     expect(rows[0].deal_id).toBeNull();
     expect(rows[0].contact_id).toBeNull();
   });
+
+  it("defaults ai_message_enabled to true when omitted, and carries an explicit false through", () => {
+    const defaulted = buildRecurringTaskRows({
+      title: "X",
+      startDate: new Date(2026, 0, 1),
+      dayOfMonth: 1,
+      repetitions: 1,
+      taskType: "billing",
+      accountId: "acct-1",
+    });
+    expect(defaulted[0].ai_message_enabled).toBe(true);
+
+    const disabled = buildRecurringTaskRows({
+      title: "X",
+      startDate: new Date(2026, 0, 1),
+      dayOfMonth: 1,
+      repetitions: 1,
+      taskType: "billing",
+      accountId: "acct-1",
+      aiMessageEnabled: false,
+    });
+    expect(disabled[0].ai_message_enabled).toBe(false);
+  });
 });

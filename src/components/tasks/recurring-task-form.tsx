@@ -7,6 +7,7 @@ import { Repeat, Loader2 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { buildRecurringTaskRows } from "@/lib/tasks/recurrence";
+import { isAiSendTaskType } from "@/lib/tasks/ai-send-types";
 import type { TaskType } from "@/types";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ export function RecurringTaskForm({ accountId, dealId, contactId, onGenerated }:
   const [dayOfMonth, setDayOfMonth] = useState("5");
   const [repetitions, setRepetitions] = useState("1");
   const [taskType, setTaskType] = useState<TaskType>("billing");
+  const [aiMessageEnabled, setAiMessageEnabled] = useState(true);
   const [generating, setGenerating] = useState(false);
 
   const repetitionsNum = Math.max(1, Math.min(60, Number(repetitions) || 1));
@@ -62,6 +64,7 @@ export function RecurringTaskForm({ accountId, dealId, contactId, onGenerated }:
       createdBy: session?.user?.id,
       dealId,
       contactId,
+      aiMessageEnabled,
     });
 
     const { error } = await supabase.from("tasks").insert(rows);
@@ -141,6 +144,18 @@ export function RecurringTaskForm({ accountId, dealId, contactId, onGenerated }:
           </select>
         </div>
       </div>
+
+      {isAiSendTaskType(taskType) && (
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={aiMessageEnabled}
+            onChange={(e) => setAiMessageEnabled(e.target.checked)}
+            className="h-3.5 w-3.5 shrink-0 accent-primary"
+          />
+          {t("aiMessageEnabled")}
+        </label>
+      )}
 
       <Button
         type="button"

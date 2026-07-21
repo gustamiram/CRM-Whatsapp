@@ -15,6 +15,10 @@ export interface RecurringTaskInput {
   createdBy?: string;
   dealId?: string | null;
   contactId?: string | null;
+  /** Whether the AI-auto-send poller should message the contact when
+   *  each installment comes due (billing/proposal_followup only —
+   *  ignored for other types). Defaults true. */
+  aiMessageEnabled?: boolean;
 }
 
 export interface RecurringTaskRow {
@@ -26,6 +30,7 @@ export interface RecurringTaskRow {
   task_type: TaskType;
   due_at: string;
   status: "pending";
+  ai_message_enabled: boolean;
 }
 
 /**
@@ -36,7 +41,7 @@ export interface RecurringTaskRow {
  * unit-testable without a Supabase client.
  */
 export function buildRecurringTaskRows(input: RecurringTaskInput): RecurringTaskRow[] {
-  const { title, startDate, dayOfMonth, repetitions, taskType, accountId, createdBy, dealId, contactId } = input;
+  const { title, startDate, dayOfMonth, repetitions, taskType, accountId, createdBy, dealId, contactId, aiMessageEnabled } = input;
   const rows: RecurringTaskRow[] = [];
   const baseYear = startDate.getFullYear();
   const baseMonth = startDate.getMonth();
@@ -61,6 +66,7 @@ export function buildRecurringTaskRows(input: RecurringTaskInput): RecurringTask
       task_type: taskType,
       due_at: dueAt.toISOString(),
       status: "pending",
+      ai_message_enabled: aiMessageEnabled ?? true,
     });
   }
 

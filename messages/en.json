@@ -82,6 +82,7 @@
         "billing": "Billing",
         "proposal_followup": "Proposal follow-up"
       },
+      "aiMessageEnabled": "Send automatically by AI",
       "generateButton": "Generate {count} {count, plural, =1 {task} other {tasks}}",
       "toastGenerated": "{count} {count, plural, =1 {task} other {tasks}} generated",
       "toastFailed": "Failed to generate the tasks"
@@ -169,6 +170,9 @@
       "showDoneTasks": "Checked tasks",
       "hideDoneTasks": "Hide checked tasks",
       "noDoneTasks": "No checked tasks yet",
+      "aiMessageEnabled": "Send automatically by AI",
+      "aiMessageOn": "AI on",
+      "aiMessageOff": "AI paused",
       "reminderSent": "Reminder sent",
       "reminderBlocked": "Reminder blocked — outside 24h window",
       "toastFailedUpdate": "Failed to update task",
@@ -606,6 +610,9 @@
       },
       "taskTitlePlaceholder": "New task...",
       "addTask": "Add task",
+      "aiMessageEnabled": "Send automatically by AI",
+      "aiMessageOn": "AI on",
+      "aiMessageOff": "AI paused",
       "reminderSent": "Reminder sent",
       "reminderBlocked": "Reminder blocked — outside 24h window",
       "deleteTask": "Delete task",

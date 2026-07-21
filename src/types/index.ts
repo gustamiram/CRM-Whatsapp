@@ -441,6 +441,9 @@ export interface Task {
   due_at?: string | null;
   status: TaskStatus;
   completed_at?: string | null;
+  /** Per-task on/off switch for the AI-auto-send poller (billing/
+   *  proposal_followup only) — defaults true, matching prior behavior. */
+  ai_message_enabled: boolean;
   reminder_sent_at?: string | null;
   reminder_status?: TaskReminderStatus | null;
   created_at: string;

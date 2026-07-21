@@ -39,6 +39,7 @@ async function processDueTasksOfType(taskType: TaskType, promptBuilder: PromptBu
       .select('*')
       .eq('task_type', taskType)
       .eq('status', 'pending')
+      .eq('ai_message_enabled', true)
       .is('reminder_sent_at', null)
       .lte('due_at', new Date().toISOString())
       .limit(50)

@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RecurringTaskForm } from "@/components/tasks/recurring-task-form";
+import { isAiSendTaskType } from "@/lib/tasks/ai-send-types";
 import {
   Check,
   X,
@@ -128,6 +129,7 @@ export function DealForm({
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskType, setNewTaskType] = useState<TaskType>("general");
   const [newTaskDue, setNewTaskDue] = useState("");
+  const [newTaskAiEnabled, setNewTaskAiEnabled] = useState(true);
   const [addingTask, setAddingTask] = useState(false);
 
   // Reset the form fields every time the sheet opens or its input
@@ -288,6 +290,7 @@ export function DealForm({
       title: newTaskTitle.trim(),
       task_type: newTaskType,
       due_at: newTaskDue ? new Date(newTaskDue).toISOString() : null,
+      ai_message_enabled: newTaskAiEnabled,
     });
     setAddingTask(false);
     if (error) {
@@ -297,7 +300,18 @@ export function DealForm({
     setNewTaskTitle("");
     setNewTaskType("general");
     setNewTaskDue("");
+    setNewTaskAiEnabled(true);
     void fetchDealTasks();
+  }
+
+  async function handleToggleAiEnabled(task: Task) {
+    const next = !task.ai_message_enabled;
+    setDealTasks((prev) => prev.map((tk) => (tk.id === task.id ? { ...tk, ai_message_enabled: next } : tk)));
+    const { error } = await supabase.from("tasks").update({ ai_message_enabled: next }).eq("id", task.id);
+    if (error) {
+      toast.error(t("toastFailedTaskUpdate"));
+      void fetchDealTasks();
+    }
   }
 
   // Toggling moves a task between the pending list and the "Tarefas
@@ -843,6 +857,23 @@ export function DealForm({
                               {task.reminder_status === "blocked_window" && (
                                 <span className="text-red-400">{t("reminderBlocked")}</span>
                               )}
+                              {isAiSendTaskType(task.task_type) && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleToggleAiEnabled(task);
+                                  }}
+                                  className={
+                                    task.ai_message_enabled
+                                      ? "rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-emerald-400"
+                                      : "rounded-full bg-muted-foreground/20 px-1.5 py-0.5 text-muted-foreground"
+                                  }
+                                >
+                                  {task.ai_message_enabled ? t("aiMessageOn") : t("aiMessageOff")}
+                                </button>
+                              )}
                             </div>
                           </div>
                           <button
@@ -879,6 +910,17 @@ export function DealForm({
                       <option value="billing">{t("taskTypes.billing")}</option>
                       <option value="proposal_followup">{t("taskTypes.proposal_followup")}</option>
                     </select>
+                    {isAiSendTaskType(newTaskType) && (
+                      <label className="col-span-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={newTaskAiEnabled}
+                          onChange={(e) => setNewTaskAiEnabled(e.target.checked)}
+                          className="h-3 w-3 shrink-0 accent-primary"
+                        />
+                        {t("aiMessageEnabled")}
+                      </label>
+                    )}
                     <Input
                       type="datetime-local"
                       value={newTaskDue}
