@@ -30,9 +30,8 @@ export const metadata: Metadata = {
     index: false,
     follow: false,
   },
-  icons: {
-    icon: [{ url: "/icon" }],
-  },
+  // No explicit `icons` override — src/app/favicon.ico (file
+  // convention) is auto-detected and injected by Next.js itself.
   formatDetection: {
     email: false,
     address: false,
