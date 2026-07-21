@@ -34,7 +34,7 @@ function LoginPageInner() {
   const searchParams = useSearchParams();
   // Forwarded from `/join/<token>` when the visitor already has an
   // account. After a successful sign-in we send them to the join
-  // page to accept rather than to /dashboard.
+  // page to accept rather than to /home.
   const inviteToken = searchParams.get("invite");
   const t = useTranslations("LoginPage");
 
@@ -64,7 +64,7 @@ function LoginPageInner() {
     if (inviteToken) {
       router.push(`/join/${encodeURIComponent(inviteToken)}`);
     } else {
-      router.push("/dashboard");
+      router.push("/home");
     }
   };
 

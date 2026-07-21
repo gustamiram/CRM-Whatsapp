@@ -62,9 +62,9 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
       new NextRequest("https://app.test/login"),
     );
 
-    // Redirect to /dashboard…
+    // Redirect to /home…
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toContain("/dashboard");
+    expect(res.headers.get("location")).toContain("/home");
     // …and the rotated cookie MUST ride along, otherwise the browser keeps
     // replaying the now-consumed refresh token and the session wedges until
     // the user manually clears cookies.
@@ -96,6 +96,16 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
 
     expect(res.headers.get("location")).toContain("/join/abc123");
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
+  });
+
+  it("redirects an unauth user off /home to /login", async () => {
+    mockUser = null;
+    refreshedCookies = [];
+
+    const res = await middleware(new NextRequest("https://app.test/home"));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/login");
   });
 
   it("passes through (no redirect) for a signed-in user on a protected page", async () => {
