@@ -425,7 +425,7 @@ export interface Deal {
 // `billing` type is synced with the AI agent (src/lib/tasks/engine.ts)
 // ============================================================
 
-export type TaskType = 'general' | 'event_reminder' | 'billing';
+export type TaskType = 'general' | 'event_reminder' | 'billing' | 'proposal_followup';
 export type TaskStatus = 'pending' | 'done';
 export type TaskReminderStatus = 'sent' | 'blocked_window' | 'failed';
 

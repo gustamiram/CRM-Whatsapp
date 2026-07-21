@@ -20,6 +20,14 @@ function isOverdue(dueAtIso: string): boolean {
   return new Date(dueAtIso).getTime() < Date.now()
 }
 
+// Both AI-auto-send task types (billing reminders, proposal
+// follow-ups — see src/lib/tasks/engine.ts) need a resolvable contact
+// to message; a standalone task with neither a deal nor a contact
+// picked has nobody to send to.
+function taskNeedsContact(taskType: TaskType): boolean {
+  return taskType === 'billing' || taskType === 'proposal_followup'
+}
+
 /**
  * Account-wide task list — deal-linked tasks (created from the Deal
  * form) and standalone ones (created here) side by side. Self-contained
@@ -130,7 +138,7 @@ export function TasksPanel() {
 
   async function handleAdd() {
     if (!title.trim() || !accountId) return
-    if (taskType === 'billing' && !contactId) {
+    if (taskNeedsContact(taskType) && !contactId) {
       toast.error(t('toastBillingNeedsContact'))
       return
     }
@@ -323,6 +331,7 @@ export function TasksPanel() {
                 <option value="general">{t('taskTypes.general')}</option>
                 <option value="event_reminder">{t('taskTypes.event_reminder')}</option>
                 <option value="billing">{t('taskTypes.billing')}</option>
+                <option value="proposal_followup">{t('taskTypes.proposal_followup')}</option>
               </select>
               <Input
                 type="datetime-local"
@@ -330,7 +339,7 @@ export function TasksPanel() {
                 onChange={(e) => setDueAt(e.target.value)}
                 className="h-8 border-border bg-muted text-xs text-foreground"
               />
-              {taskType === 'billing' ? (
+              {taskNeedsContact(taskType) ? (
                 <select
                   value={contactId}
                   onChange={(e) => setContactId(e.target.value)}
@@ -354,7 +363,7 @@ export function TasksPanel() {
                   {t('addTask')}
                 </Button>
               )}
-              {taskType === 'billing' && (
+              {taskNeedsContact(taskType) && (
                 <Button
                   type="button"
                   onClick={handleAdd}

@@ -79,7 +79,8 @@
       "taskTypes": {
         "general": "Geral",
         "event_reminder": "Lembrete de evento",
-        "billing": "Pagamento"
+        "billing": "Pagamento",
+        "proposal_followup": "Retorno de proposta"
       },
       "generateButton": "Gerar {count} {count, plural, =1 {tarefa} other {tarefas}}",
       "toastGenerated": "{count} {count, plural, =1 {tarefa gerada} other {tarefas geradas}}",
@@ -158,7 +159,8 @@
       "taskTypes": {
         "general": "Geral",
         "event_reminder": "Lembrete de evento",
-        "billing": "Cobrança"
+        "billing": "Cobrança",
+        "proposal_followup": "Retorno de proposta"
       },
       "taskTitlePlaceholder": "Nova tarefa...",
       "selectContact": "Selecione um contato",
@@ -172,7 +174,7 @@
       "toastFailedUpdate": "Falha ao atualizar a tarefa",
       "toastFailedDelete": "Falha ao excluir a tarefa",
       "toastFailedAdd": "Falha ao adicionar a tarefa",
-      "toastBillingNeedsContact": "Tarefas de cobrança precisam de um contato"
+      "toastBillingNeedsContact": "Esse tipo de tarefa precisa de um contato"
     },
     "responseTimeChart": {
       "title": "Tempo médio de primeira resposta",
@@ -599,7 +601,8 @@
       "taskTypes": {
         "general": "Geral",
         "event_reminder": "Lembrete de evento",
-        "billing": "Cobrança"
+        "billing": "Cobrança",
+        "proposal_followup": "Retorno de proposta"
       },
       "taskTitlePlaceholder": "Nova tarefa...",
       "addTask": "Adicionar tarefa",

@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@/lib/ai/config', () => ({ loadAiConfig: h.loadAiConfig }))
 vi.mock('@/lib/ai/generate', () => ({ generateReply: h.generateReply }))
+vi.mock('@/lib/ai/memory', () => ({ getConversationMemory: vi.fn().mockResolvedValue(null) }))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
@@ -88,7 +89,7 @@ vi.mock('./admin-client', () => ({
   }),
 }))
 
-import { processDueBillingTasks } from './engine'
+import { processDueBillingTasks, processDueProposalFollowupTasks } from './engine'
 
 function aiConfig(overrides: Partial<AiConfig> = {}): AiConfig {
   return {
@@ -217,6 +218,68 @@ describe('processDueBillingTasks', () => {
   it('does nothing when there are no due tasks', async () => {
     h.state.dueTasks = []
     await processDueBillingTasks()
+    expect(h.generateReply).not.toHaveBeenCalled()
+  })
+})
+
+describe('processDueProposalFollowupTasks', () => {
+  it('sends a follow-up and marks it sent (UAZAPI — no window restriction)', async () => {
+    await processDueProposalFollowupTasks()
+
+    expect(h.generateReply).toHaveBeenCalledTimes(1)
+    const [args] = h.generateReply.mock.calls[0]
+    expect(args.systemPrompt).toContain('follow-up')
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: 'acct-1',
+        contactId: 'contact-1',
+        conversationId: 'conv-1',
+        aiGenerated: true,
+      }),
+    )
+    expect(h.state.updates).toEqual([
+      { id: 'task-1', patch: expect.objectContaining({ reminder_status: 'sent' }) },
+    ])
+  })
+
+  it('resolves the contact through the linked deal and mentions it in the prompt', async () => {
+    h.state.dueTasks = [{ ...TASK, contact_id: null, deal_id: 'deal-1' }]
+    h.state.deal = { contact_id: 'contact-1', title: 'Wedding photos proposal', value: 500, currency: 'BRL' }
+
+    await processDueProposalFollowupTasks()
+
+    expect(h.engineSendText).toHaveBeenCalledWith(expect.objectContaining({ contactId: 'contact-1' }))
+    const [args] = h.generateReply.mock.calls[0]
+    expect(args.systemPrompt).toContain('Wedding photos proposal')
+  })
+
+  it('marks the task failed (no retry storm) when no contact can be resolved', async () => {
+    h.state.dueTasks = [{ ...TASK, contact_id: null, deal_id: null }]
+
+    await processDueProposalFollowupTasks()
+
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.state.updates).toEqual([
+      { id: 'task-1', patch: expect.objectContaining({ reminder_status: 'failed' }) },
+    ])
+  })
+
+  it('blocks the send on Meta when the contact is outside the 24h window', async () => {
+    h.state.waConfig = { provider: 'meta', user_id: 'user-1' }
+    h.state.lastCustomerMessage = null
+
+    await processDueProposalFollowupTasks()
+
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+    expect(h.state.updates).toEqual([
+      { id: 'task-1', patch: expect.objectContaining({ reminder_status: 'blocked_window' }) },
+    ])
+  })
+
+  it('does nothing when there are no due tasks', async () => {
+    h.state.dueTasks = []
+    await processDueProposalFollowupTasks()
     expect(h.generateReply).not.toHaveBeenCalled()
   })
 })

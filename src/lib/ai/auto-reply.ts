@@ -4,7 +4,8 @@ import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
 import { retrieveUpcomingEvents } from './events'
 import { generateReply } from './generate'
-import { buildSystemPrompt } from './defaults'
+import { buildSystemPrompt, aiContextMessageLimit } from './defaults'
+import { getConversationMemory, refreshConversationMemoryIfDue } from './memory'
 import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
@@ -215,11 +216,17 @@ export async function dispatchInboundToAiReply(
     // "is <date/time> free?" without inventing availability.
     const events = await retrieveUpcomingEvents(db, accountId)
 
+    // Rolling long-term summary covering whatever has already scrolled
+    // out of `messages`' recent-messages window (see src/lib/ai/memory.ts)
+    // — keeps a long conversation's earlier context alive indefinitely.
+    const memory = await getConversationMemory(db, conversationId)
+
     const systemPrompt = buildSystemPrompt({
       userPrompt: config.systemPrompt,
       mode: 'auto_reply',
       knowledge,
       events,
+      memory,
     })
 
     const { text, handoff, usage } = await generateReply({
@@ -297,6 +304,11 @@ export async function dispatchInboundToAiReply(
       text,
       aiGenerated: true,
     })
+
+    // Fire-and-forget: never adds latency to the customer-facing send,
+    // and internally no-ops unless enough new messages have scrolled
+    // out of the recent-messages window to justify another LLM call.
+    void refreshConversationMemoryIfDue(db, config, conversationId, aiContextMessageLimit())
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
   }

@@ -877,6 +877,7 @@ export function DealForm({
                       <option value="general">{t("taskTypes.general")}</option>
                       <option value="event_reminder">{t("taskTypes.event_reminder")}</option>
                       <option value="billing">{t("taskTypes.billing")}</option>
+                      <option value="proposal_followup">{t("taskTypes.proposal_followup")}</option>
                     </select>
                     <Input
                       type="datetime-local"

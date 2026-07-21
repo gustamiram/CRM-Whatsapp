@@ -2,13 +2,23 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from './admin-client'
 import { loadAiConfig } from '@/lib/ai/config'
 import { generateReply } from '@/lib/ai/generate'
+import { getConversationMemory } from '@/lib/ai/memory'
 import { engineSendText } from '@/lib/flows/meta-send'
-import type { Task } from '@/types'
+import type { Task, TaskType } from '@/types'
+
+type PromptBuilder = (args: {
+  contactName: string
+  taskTitle: string
+  taskNotes: string | null
+  dueAt: string | null
+  deal: { title: string; value: number; currency: string } | null
+  memory: string | null
+}) => string
 
 /**
- * Poll for `billing`-type tasks that just came due and haven't been
- * reminded about yet, and have the AI agent send each contact a
- * payment-reminder message.
+ * Shared poller: fetch pending, past-due, not-yet-reminded tasks of a
+ * given `task_type` and have the AI agent message each one's contact,
+ * drafted by `promptBuilder`.
  *
  * Called from the existing /api/automations/cron route (reuses the
  * external cron-job.org pinger already hitting that endpoint every
@@ -17,38 +27,49 @@ import type { Task } from '@/types'
  * logged per-task so one bad row can't stop the rest.
  *
  * `status` (the human "mark done" checkbox) is never touched here —
- * sending a reminder isn't the same as the bill being settled.
+ * sending a message isn't the same as the task being resolved.
  * `reminder_sent_at` is set exactly once per due occurrence so the
  * poller doesn't resend every minute once a task becomes due.
  */
-export async function processDueBillingTasks(): Promise<void> {
+async function processDueTasksOfType(taskType: TaskType, promptBuilder: PromptBuilder): Promise<void> {
   try {
     const db = supabaseAdmin()
     const { data: dueTasks, error } = await db
       .from('tasks')
       .select('*')
-      .eq('task_type', 'billing')
+      .eq('task_type', taskType)
       .eq('status', 'pending')
       .is('reminder_sent_at', null)
       .lte('due_at', new Date().toISOString())
       .limit(50)
 
     if (error) {
-      console.error('[tasks] failed to fetch due billing tasks:', error)
+      console.error(`[tasks] failed to fetch due ${taskType} tasks:`, error)
       return
     }
     if (!dueTasks || dueTasks.length === 0) return
 
     for (const task of dueTasks as Task[]) {
       try {
-        await processOneBillingTask(db, task)
+        await processOneAiMessageTask(db, task, promptBuilder)
       } catch (err) {
-        console.error('[tasks] billing reminder failed:', task.id, err)
+        console.error(`[tasks] ${taskType} message failed:`, task.id, err)
       }
     }
   } catch (err) {
-    console.error('[tasks] processDueBillingTasks failed:', err)
+    console.error(`[tasks] processDueTasksOfType(${taskType}) failed:`, err)
   }
+}
+
+/** Polls `billing` tasks — AI drafts and sends a payment reminder. */
+export async function processDueBillingTasks(): Promise<void> {
+  await processDueTasksOfType('billing', buildBillingReminderPrompt)
+}
+
+/** Polls `proposal_followup` tasks — AI asks what the customer thought
+ *  of a proposal that was already sent. */
+export async function processDueProposalFollowupTasks(): Promise<void> {
+  await processDueTasksOfType('proposal_followup', buildProposalFollowupPrompt)
 }
 
 async function markReminder(
@@ -62,7 +83,7 @@ async function markReminder(
     .eq('id', taskId)
 }
 
-async function processOneBillingTask(db: SupabaseClient, task: Task) {
+async function processOneAiMessageTask(db: SupabaseClient, task: Task, promptBuilder: PromptBuilder) {
   // Resolve the contact: the task's own contact_id, falling back to its
   // linked deal's. Also pull the deal's title/value/currency (if any) so
   // the reminder can mention what's owed.
@@ -85,7 +106,7 @@ async function processOneBillingTask(db: SupabaseClient, task: Task) {
     // Shouldn't happen — both UI paths that create a billing task
     // require a contact — but stop the retry loop rather than
     // re-checking this row every minute forever.
-    console.error(`[tasks] billing task ${task.id} has no resolvable contact`)
+    console.error(`[tasks] task ${task.id} has no resolvable contact`)
     await markReminder(db, task.id, 'failed')
     return
   }
@@ -96,7 +117,7 @@ async function processOneBillingTask(db: SupabaseClient, task: Task) {
     .eq('id', contactId)
     .maybeSingle()
   if (!contact) {
-    console.error(`[tasks] billing task ${task.id}: contact ${contactId} not found`)
+    console.error(`[tasks] task ${task.id}: contact ${contactId} not found`)
     await markReminder(db, task.id, 'failed')
     return
   }
@@ -108,7 +129,7 @@ async function processOneBillingTask(db: SupabaseClient, task: Task) {
     .eq('account_id', contact.account_id)
     .maybeSingle()
   if (!conversation) {
-    console.error(`[tasks] billing task ${task.id}: no conversation for contact ${contactId}`)
+    console.error(`[tasks] task ${task.id}: no conversation for contact ${contactId}`)
     await markReminder(db, task.id, 'failed')
     return
   }
@@ -129,7 +150,7 @@ async function processOneBillingTask(db: SupabaseClient, task: Task) {
     .eq('account_id', contact.account_id)
     .maybeSingle()
   if (!waConfig) {
-    console.error(`[tasks] billing task ${task.id}: WhatsApp not configured for this account`)
+    console.error(`[tasks] task ${task.id}: WhatsApp not configured for this account`)
     await markReminder(db, task.id, 'failed')
     return
   }
@@ -148,26 +169,33 @@ async function processOneBillingTask(db: SupabaseClient, task: Task) {
       Date.now() - new Date(lastCustomerMsg.created_at).getTime() < 24 * 60 * 60 * 1000
     if (!withinWindow) {
       console.warn(
-        `[tasks] billing task ${task.id}: contact outside Meta's 24h window — reminder blocked, needs a human`,
+        `[tasks] task ${task.id}: contact outside Meta's 24h window — message blocked, needs a human`,
       )
       await markReminder(db, task.id, 'blocked_window')
       return
     }
   }
 
-  const systemPrompt = buildBillingReminderPrompt({
+  // Same rolling long-term memory the auto-reply bot uses (src/lib/ai/memory.ts)
+  // — a billing/follow-up message sent after a long gap still carries
+  // whatever the conversation already established, not just this
+  // task's own title/notes.
+  const memory = await getConversationMemory(db, conversation.id)
+
+  const systemPrompt = promptBuilder({
     contactName: contact.name || contact.phone,
     taskTitle: task.title,
     taskNotes: task.notes ?? null,
     dueAt: task.due_at ?? null,
     deal: dealInfo,
+    memory,
   })
 
   try {
     const { text } = await generateReply({
       config,
       systemPrompt,
-      messages: [{ role: 'user', content: 'Write the reminder message now.' }],
+      messages: [{ role: 'user', content: 'Write the message now.' }],
     })
     if (!text.trim()) throw new Error('empty generation')
 
@@ -181,7 +209,7 @@ async function processOneBillingTask(db: SupabaseClient, task: Task) {
     })
     await markReminder(db, task.id, 'sent')
   } catch (err) {
-    console.error(`[tasks] billing task ${task.id}: send failed:`, err)
+    console.error(`[tasks] task ${task.id}: send failed:`, err)
     await markReminder(db, task.id, 'failed')
   }
 }
@@ -192,6 +220,7 @@ function buildBillingReminderPrompt(args: {
   taskNotes: string | null
   dueAt: string | null
   deal: { title: string; value: number; currency: string } | null
+  memory: string | null
 }): string {
   const parts = [
     'You are drafting a single WhatsApp payment-reminder message on behalf of this business, to send directly to the customer below. Be short, polite, and clear about what is due. Do not include greetings-only filler or internal/staff-facing notes — output only the message text the customer should read.',
@@ -203,5 +232,27 @@ function buildBillingReminderPrompt(args: {
   }
   if (args.taskNotes) parts.push(`Additional context: ${args.taskNotes}`)
   if (args.dueAt) parts.push(`Due: ${new Date(args.dueAt).toISOString()}`)
-  return parts.join('\n')
+  if (args.memory) parts.push(`Conversation memory (earlier context that may have scrolled out of view):\n${args.memory}`)
+  return parts.join('\n\n')
+}
+
+function buildProposalFollowupPrompt(args: {
+  contactName: string
+  taskTitle: string
+  taskNotes: string | null
+  dueAt: string | null
+  deal: { title: string; value: number; currency: string } | null
+  memory: string | null
+}): string {
+  const parts = [
+    'You are drafting a single WhatsApp follow-up message on behalf of this business, to send directly to the customer below, asking what they thought of a proposal that was already sent to them. Be short, warm, and low-pressure — invite feedback or questions, do not re-quote pricing or re-send proposal details unless the customer asks. Do not include greetings-only filler or internal/staff-facing notes — output only the message text the customer should read.',
+    `Customer: ${args.contactName}`,
+    `Follow-up: ${args.taskTitle}`,
+  ]
+  if (args.deal) {
+    parts.push(`Related proposal/deal: ${args.deal.title}${args.deal.value ? ` — ${args.deal.currency} ${args.deal.value}` : ''}`)
+  }
+  if (args.taskNotes) parts.push(`Additional context: ${args.taskNotes}`)
+  if (args.memory) parts.push(`Conversation memory (earlier context that may have scrolled out of view):\n${args.memory}`)
+  return parts.join('\n\n')
 }

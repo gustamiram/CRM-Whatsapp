@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { resumePendingExecution } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
-import { processDueBillingTasks } from '@/lib/tasks/engine'
+import { processDueBillingTasks, processDueProposalFollowupTasks } from '@/lib/tasks/engine'
 
 /**
  * Drain due `automation_pending_executions` rows. Meant to be hit
@@ -65,13 +65,19 @@ export async function GET(request: Request) {
     processed++
   }
 
-  // Billing-task reminders piggyback on this same external pinger —
-  // own try/catch so a failure here can never affect the automations
-  // processed above (it already never throws, this is defense in depth).
+  // Billing-task reminders and proposal-followup check-ins piggyback on
+  // this same external pinger — own try/catch each so a failure in one
+  // can never affect the automations processed above or the other
+  // (both already never throw internally, this is defense in depth).
   try {
     await processDueBillingTasks()
   } catch (err) {
     console.error('[cron] processDueBillingTasks failed:', err)
+  }
+  try {
+    await processDueProposalFollowupTasks()
+  } catch (err) {
+    console.error('[cron] processDueProposalFollowupTasks failed:', err)
   }
 
   return NextResponse.json({ processed })

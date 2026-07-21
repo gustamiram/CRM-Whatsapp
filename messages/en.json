@@ -79,7 +79,8 @@
       "taskTypes": {
         "general": "General",
         "event_reminder": "Event reminder",
-        "billing": "Billing"
+        "billing": "Billing",
+        "proposal_followup": "Proposal follow-up"
       },
       "generateButton": "Generate {count} {count, plural, =1 {task} other {tasks}}",
       "toastGenerated": "{count} {count, plural, =1 {task} other {tasks}} generated",
@@ -158,7 +159,8 @@
       "taskTypes": {
         "general": "General",
         "event_reminder": "Event reminder",
-        "billing": "Billing"
+        "billing": "Billing",
+        "proposal_followup": "Proposal follow-up"
       },
       "taskTitlePlaceholder": "New task...",
       "selectContact": "Select a contact",
@@ -172,7 +174,7 @@
       "toastFailedUpdate": "Failed to update task",
       "toastFailedDelete": "Failed to delete task",
       "toastFailedAdd": "Failed to add task",
-      "toastBillingNeedsContact": "Billing tasks need a contact"
+      "toastBillingNeedsContact": "This task type needs a contact"
     },
     "responseTimeChart": {
       "title": "Average First Response Time",
@@ -599,7 +601,8 @@
       "taskTypes": {
         "general": "General",
         "event_reminder": "Event reminder",
-        "billing": "Billing"
+        "billing": "Billing",
+        "proposal_followup": "Proposal follow-up"
       },
       "taskTitlePlaceholder": "New task...",
       "addTask": "Add task",
