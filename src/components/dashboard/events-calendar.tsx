@@ -107,6 +107,25 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
   }, [events])
 
+  // `upcoming` is already chronological, so a single pass groups
+  // consecutive same-month events together — no separate sort needed.
+  // The year is included in the label (not just "julho") so events far
+  // enough out to cross a year boundary still read unambiguously.
+  const upcomingByMonth = useMemo(() => {
+    const groups: { key: string; label: string; events: EventItem[] }[] = []
+    for (const e of upcoming) {
+      const d = new Date(e.date)
+      const key = format(d, 'yyyy-MM')
+      const last = groups[groups.length - 1]
+      if (last && last.key === key) {
+        last.events.push(e)
+      } else {
+        groups.push({ key, label: format(d, 'MMMM yyyy', { locale: dateFnsLocale }), events: [e] })
+      }
+    }
+    return groups
+  }, [upcoming, dateFnsLocale])
+
   const selectedEvents = selectedKey ? byDay.get(selectedKey) ?? [] : []
 
   // Swipe-to-navigate on touch devices — an alternative to the arrow
@@ -336,48 +355,46 @@ export function EventsCalendar({ events, loading, onEventsChanged }: EventsCalen
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {t('upcoming')}
               </p>
-              <div className="mt-2 space-y-2">
+              <div className="mt-2 space-y-2.5">
                 {upcoming.length === 0 ? (
                   <p className="text-xs text-muted-foreground">{t('noUpcoming')}</p>
                 ) : (
-                  upcoming.map((e, i) => {
-                    const d = new Date(e.date)
-                    // Alternating accent weight (like the reference's
-                    // alternating card shades) — subtle, not literal color.
-                    const strong = i % 2 === 0
-                    return (
-                      <button
-                        type="button"
-                        key={e.id}
-                        onClick={() => openEventDeal(e.id)}
-                        className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors hover:brightness-110 ${
-                          strong ? 'bg-primary/15' : 'bg-muted'
-                        }`}
-                      >
-                        <div
-                          className={`flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-lg text-sm font-extrabold leading-none ${
-                            strong
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-primary/20 text-primary'
-                          }`}
-                        >
-                          {format(d, 'd')}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-semibold text-foreground">{e.title}</p>
-                          {e.contactName && (
-                            <p className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
-                              {e.contactName}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1 text-xs font-semibold text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          {format(d, 'HH:mm')}
-                        </div>
-                      </button>
-                    )
-                  })
+                  upcomingByMonth.map((group) => (
+                    <div key={group.key}>
+                      <p className="mb-1 truncate text-[11px] font-semibold capitalize text-muted-foreground/80">
+                        {group.label}
+                      </p>
+                      <div className="space-y-1">
+                        {group.events.map((e) => {
+                          const d = new Date(e.date)
+                          return (
+                            <button
+                              type="button"
+                              key={e.id}
+                              onClick={() => openEventDeal(e.id)}
+                              className="flex w-full items-center gap-2 rounded-md bg-muted/60 px-2 py-1 text-left transition-colors hover:bg-muted"
+                            >
+                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/20 text-[10px] font-bold leading-none text-primary">
+                                {format(d, 'd')}
+                              </div>
+                              <p className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+                                {e.title}
+                              </p>
+                              {e.contactName && (
+                                <p className="hidden shrink-0 truncate text-[10px] text-muted-foreground sm:block sm:max-w-[100px]">
+                                  {e.contactName}
+                                </p>
+                              )}
+                              <div className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                                <Clock className="h-3 w-3" />
+                                {format(d, 'HH:mm')}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
