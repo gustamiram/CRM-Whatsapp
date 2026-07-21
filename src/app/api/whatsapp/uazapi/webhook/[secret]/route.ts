@@ -6,6 +6,8 @@ import {
   ingestAgentSentMessage,
   ingestHistoryMessage,
 } from '@/lib/whatsapp/inbound-core'
+import { fetchAndDecryptWhatsappMedia, baseMimetype, extensionForMedia } from '@/lib/whatsapp/media-decrypt'
+import { buildMediaPath } from '@/lib/storage/upload-media'
 
 // Inbound processing can fan out to the flows/automations/AI engines.
 export const maxDuration = 60
@@ -57,7 +59,14 @@ interface UazapiMessage {
   // Media / interactive (best-effort — presence varies by version):
   mediaUrl?: string
   file?: string
-  content?: string
+  /**
+   * For `document`/`image`-type messages, UAZAPI re-hosts an
+   * already-decrypted copy and puts its plain URL here as a string.
+   * For `ptt`/audio messages it instead passes the raw WhatsApp CDN
+   * pointer through unconverted, as an object — see
+   * `encryptedMediaRefOf` / `src/lib/whatsapp/media-decrypt.ts`.
+   */
+  content?: string | { URL?: string; mediaKey?: string; mimetype?: string }
   mimetype?: string
   caption?: string
   selectedId?: string
@@ -110,6 +119,71 @@ function mediaUrlOf(msg: UazapiMessage): string | null {
     if (typeof url === 'string' && /^https?:\/\//i.test(url)) return url
   }
   return null
+}
+
+/**
+ * When `content` is an object (not a plain URL string), it's UAZAPI
+ * passing the raw WhatsApp CDN pointer through unconverted — confirmed
+ * for `ptt`/audio messages via a captured payload (2026-07-21):
+ * `{ URL, mediaKey, mimetype, PTT: true, ... }` pointing at an
+ * unconverted `.enc` blob. Returns the fields needed to decrypt it.
+ */
+function encryptedMediaRefOf(
+  msg: UazapiMessage,
+): { url: string; mediaKey: string; mimetype?: string } | null {
+  const content = msg.content
+  if (
+    content &&
+    typeof content === 'object' &&
+    typeof content.URL === 'string' &&
+    typeof content.mediaKey === 'string'
+  ) {
+    return { url: content.URL, mediaKey: content.mediaKey, mimetype: content.mimetype }
+  }
+  return null
+}
+
+/**
+ * Resolve the playable media URL for an inbound media message: decrypt
+ * + re-host WhatsApp's raw encrypted pointer when present (the
+ * `ptt`/audio gap above), otherwise fall back to whatever plain URL
+ * `mediaUrlOf` finds. Never throws — a decrypt/upload failure just
+ * falls through to the existing "media unavailable" UI, same as
+ * before this fix existed.
+ */
+async function resolveMediaUrl(
+  msg: UazapiMessage,
+  type: string,
+  accountId: string,
+): Promise<string | null> {
+  const encryptedRef = encryptedMediaRefOf(msg)
+  if (encryptedRef && (type === 'image' || type === 'video' || type === 'audio' || type === 'document')) {
+    try {
+      const decrypted = await fetchAndDecryptWhatsappMedia(
+        encryptedRef.url,
+        encryptedRef.mediaKey,
+        type,
+      )
+      const contentType = baseMimetype(encryptedRef.mimetype, `${type}/*`)
+      const ext = extensionForMedia(encryptedRef.mimetype, type)
+      const path = buildMediaPath(accountId, `inbound.${ext}`)
+
+      const { error } = await supabaseAdmin()
+        .storage.from('chat-media')
+        .upload(path, decrypted, { contentType, cacheControl: '3600', upsert: false })
+      if (error) throw error
+
+      const {
+        data: { publicUrl },
+      } = supabaseAdmin().storage.from('chat-media').getPublicUrl(path)
+      return publicUrl
+    } catch (err) {
+      console.error('[uazapi webhook] decrypt/store encrypted media failed:', err)
+      // Fall through to mediaUrlOf below — worst case, same
+      // "unavailable" outcome as before this fix.
+    }
+  }
+  return mediaUrlOf(msg)
 }
 
 function extractJidUser(jid: string): string {
@@ -345,12 +419,12 @@ async function processUazapiEvent(
 
   const isMedia =
     type === 'image' || type === 'video' || type === 'audio' || type === 'document'
-  const mediaUrl = isMedia ? mediaUrlOf(msg) : null
+  const mediaUrl = isMedia ? await resolveMediaUrl(msg, type, accountId) : null
   if (type === 'audio' && !mediaUrl) {
-    // "Áudio indisponível" bug: mediaUrlOf found none of its candidate
-    // fields on this message. Logging the full raw payload (no
-    // credentials in a webhook body) so the next real occurrence tells
-    // us exactly which field UAZAPI actually used for this voice note.
+    // "Áudio indisponível" bug: neither a decrypted+re-hosted copy nor
+    // any of mediaUrlOf's candidate fields resolved. Logging the full
+    // raw payload (no credentials in a webhook body) so a still-failing
+    // case tells us exactly what shape this message actually had.
     console.warn('[uazapi webhook] audio message with no resolvable media URL:', JSON.stringify(msg))
   }
   const interactiveReplyId =
