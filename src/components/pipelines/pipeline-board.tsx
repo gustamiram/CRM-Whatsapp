@@ -103,7 +103,7 @@ export function PipelineBoard({
           natural layout. The board can still overflow horizontally on
           lg+ once a pipeline has many stages (columns keep a 260px
           min-width), so a thin scrollbar stays visible on desktop. */}
-      <div className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none">
+      <div className="pipeline-scroll flex snap-x snap-mandatory gap-2 overflow-x-auto pb-4 lg:snap-none">
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
           const totalValue = stageDeals.reduce(
@@ -207,22 +207,21 @@ function StageColumn({
   const accent = stage.color;
 
   return (
-    // On mobile each column is `w-[85vw]` (with a reasonable min/max)
-    // so the next column's edge peeks in — a "there's more here" hint.
-    // snap-start lands each column cleanly when swiping. On lg+ we
-    // restore the flex-1 share-the-row behavior. The droppable ref is
-    // on the inner cards region below — intentionally NOT here, so a
-    // drag over the column header doesn't highlight the whole column.
-    // The column carries a faint stage-color wash (mixed into --card so
-    // it stays legible in both light and dark modes).
+    // Narrow columns (mobile ~2 visible + a peek of the next, desktop
+    // packs more across the row) so more Kanban stages fit on one page.
+    // snap-start lands each column cleanly when swiping on touch. The
+    // droppable ref is on the inner cards region below — intentionally
+    // NOT here, so a drag over the column header doesn't highlight the
+    // whole column. The column carries a faint stage-color wash (mixed
+    // into --card so it stays legible in both light and dark modes).
     <div
-      className="flex w-[85vw] min-w-[260px] max-w-[320px] shrink-0 snap-start flex-col rounded-2xl p-2.5 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none"
+      className="flex w-[46vw] min-w-[164px] max-w-[230px] shrink-0 snap-start flex-col rounded-2xl p-2 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[196px] lg:shrink lg:snap-none"
       style={{ backgroundColor: `color-mix(in srgb, ${accent} 7%, var(--card))` }}
     >
       {/* Header pill — soft stage-tinted block with a colored bar
           accent, stage name and a count badge. */}
       <div
-        className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+        className="flex items-center gap-1.5 rounded-xl px-2.5 py-2"
         style={{
           backgroundColor: `color-mix(in srgb, ${accent} 16%, var(--card))`,
         }}
@@ -232,14 +231,14 @@ function StageColumn({
           className="h-4 w-1 shrink-0 rounded-full"
           style={{ backgroundColor: accent }}
         />
-        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+        <h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">
           {stage.name}
         </h3>
-        <span className="shrink-0 rounded-full bg-background/70 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+        <span className="shrink-0 rounded-full bg-background/70 px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
           {deals.length}
         </span>
       </div>
-      <p className="px-3 pt-1.5 text-[11px] text-muted-foreground">
+      <p className="px-2.5 pt-1 text-[11px] text-muted-foreground">
         {formatCurrency(totalValue, currency)}
       </p>
 
@@ -309,19 +308,18 @@ function DraggableDealCard({
     id: deal.id,
   });
 
-  // Listeners/attributes are forwarded to the card's grip handle (not
-  // this wrapper) so only the handle starts a drag — the rest of the
-  // card stays tappable and the column stays scrollable on touch. The
-  // wrapper therefore keeps its default `touch-action` (no override).
+  // The whole card is the drag target (`touch-action: none` so touch
+  // starts a drag rather than scrolling). A plain tap still opens the
+  // deal because the PointerSensor needs 5px of movement before it
+  // counts as a drag.
   return (
-    <div ref={setNodeRef} style={{ opacity: isDragging ? 0.3 : 1 }}>
-      <DealCard
-        deal={deal}
-        stage={stage}
-        onEdit={onEdit}
-        dragListeners={listeners}
-        dragAttributes={attributes}
-      />
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      style={{ opacity: isDragging ? 0.3 : 1, touchAction: "none" }}
+    >
+      <DealCard deal={deal} stage={stage} onEdit={onEdit} />
     </div>
   );
 }
