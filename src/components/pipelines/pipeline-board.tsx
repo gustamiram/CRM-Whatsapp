@@ -233,23 +233,39 @@ function StageColumn({
         ref={setNodeRef}
         className={`mt-3 flex flex-1 flex-col gap-2 rounded-lg transition-all ${
           isOver
-            ? "bg-primary/5 outline outline-2 outline-dashed outline-primary outline-offset-2"
+            ? "bg-primary/10 outline outline-2 outline-dashed outline-primary outline-offset-2"
             : ""
         }`}
       >
         {deals.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-lg border-2 border-dashed border-border py-10 text-xs text-muted-foreground">
+          <div
+            className={`flex flex-1 items-center justify-center rounded-lg border-2 border-dashed py-10 text-xs transition-colors ${
+              isOver
+                ? "border-primary bg-primary/5 font-medium text-primary"
+                : "border-border text-muted-foreground"
+            }`}
+          >
             {t("dropDealHere")}
           </div>
         ) : (
-          deals.map((deal) => (
-            <DraggableDealCard
-              key={deal.id}
-              deal={deal}
-              stage={stage}
-              onEdit={onEditDeal}
-            />
-          ))
+          <>
+            {deals.map((deal) => (
+              <DraggableDealCard
+                key={deal.id}
+                deal={deal}
+                stage={stage}
+                onEdit={onEditDeal}
+              />
+            ))}
+            {/* While a card is dragged over a column that already has
+                cards, show a dashed slot so the drop target is obvious
+                (matches the empty-column affordance). */}
+            {isOver && (
+              <div className="rounded-lg border-2 border-dashed border-primary bg-primary/5 py-6 text-center text-xs font-medium text-primary">
+                {t("dropDealHere")}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -279,14 +295,19 @@ function DraggableDealCard({
     id: deal.id,
   });
 
+  // Listeners/attributes are forwarded to the card's grip handle (not
+  // this wrapper) so only the handle starts a drag — the rest of the
+  // card stays tappable and the column stays scrollable on touch. The
+  // wrapper therefore keeps its default `touch-action` (no override).
   return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      style={{ opacity: isDragging ? 0.3 : 1, touchAction: "none" }}
-    >
-      <DealCard deal={deal} stage={stage} onEdit={onEdit} />
+    <div ref={setNodeRef} style={{ opacity: isDragging ? 0.3 : 1 }}>
+      <DealCard
+        deal={deal}
+        stage={stage}
+        onEdit={onEdit}
+        dragListeners={listeners}
+        dragAttributes={attributes}
+      />
     </div>
   );
 }

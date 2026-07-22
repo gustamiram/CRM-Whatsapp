@@ -572,7 +572,8 @@
     "card": {
       "noContact": "Nenhum contato",
       "won": "Ganho",
-      "lost": "Perdido"
+      "lost": "Perdido",
+      "dragHandle": "Arraste para mover"
     },
     "form": {
       "editDeal": "Editar negócio",
