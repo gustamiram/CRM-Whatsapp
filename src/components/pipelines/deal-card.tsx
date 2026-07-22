@@ -1,7 +1,7 @@
 "use client";
 
 import type { Deal, PipelineStage } from "@/types";
-import { Calendar, Check, GripVertical, X } from "lucide-react";
+import { Calendar, Check, MoveHorizontal, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
 
@@ -123,18 +123,19 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         </div>
       </div>
 
-      {/* Drag affordance — a grip on the card's right edge. The whole
-          card is draggable (the wrapper carries the dnd listeners), so
-          this is a visual "grab here" hint; dragging from it works too.
-          Hidden from the accessibility tree since it isn't a separate
-          control. */}
+      {/* Drag affordance — a horizontal-move icon on the card's right
+          edge. The whole card is draggable (the wrapper carries the dnd
+          listeners) and only a sideways gesture starts a drag (vertical
+          gestures scroll the page), so a left/right arrow communicates
+          the interaction. Hidden from the accessibility tree since it
+          isn't a separate control. */}
       <span
         aria-hidden
         className={`flex shrink-0 items-center self-stretch text-muted-foreground/30 transition-colors group-hover:text-muted-foreground/60 ${
           isOverlay ? "cursor-grabbing" : "cursor-grab"
         }`}
       >
-        <GripVertical className="h-4 w-4" />
+        <MoveHorizontal className="h-4 w-4" />
       </span>
     </button>
   );

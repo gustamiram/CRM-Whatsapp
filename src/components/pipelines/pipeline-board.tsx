@@ -308,16 +308,17 @@ function DraggableDealCard({
     id: deal.id,
   });
 
-  // The whole card is the drag target (`touch-action: none` so touch
-  // starts a drag rather than scrolling). A plain tap still opens the
-  // deal because the PointerSensor needs 5px of movement before it
-  // counts as a drag.
+  // The whole card is the drag target, but `touch-action: pan-y` lets
+  // the browser keep handling vertical gestures natively — so scrolling
+  // the page down never gets mistaken for a drag. Only a horizontal
+  // gesture is left for dnd-kit, which then starts a drag once it
+  // passes the sensor's 5px threshold; a plain tap still opens the deal.
   return (
     <div
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      style={{ opacity: isDragging ? 0.3 : 1, touchAction: "none" }}
+      style={{ opacity: isDragging ? 0.3 : 1, touchAction: "pan-y" }}
     >
       <DealCard deal={deal} stage={stage} onEdit={onEdit} />
     </div>
