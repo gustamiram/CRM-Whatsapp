@@ -88,6 +88,13 @@
 
 :root,
 html[data-mode="dark"] {
+  /* Tells the browser to render native controls (date/time pickers,
+     checkboxes, select popups, scrollbars) in dark colors — without
+     this, they follow the OS-level light/dark preference instead of
+     this app's own mode toggle, and can render invisible text on a
+     dark card when the two disagree (e.g. phone set to light mode
+     but the app toggled to dark). */
+  color-scheme: dark;
   --background: oklch(0.13 0.01 260);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.18 0.01 260);
@@ -117,6 +124,7 @@ html[data-mode="dark"] {
 }
 
 html[data-mode="light"] {
+  color-scheme: light;
   --background: oklch(0.99 0.002 260);
   --foreground: oklch(0.21 0.01 260);
   --card: oklch(1 0 0);

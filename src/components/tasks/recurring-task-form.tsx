@@ -97,9 +97,16 @@ export function RecurringTaskForm({ accountId, dealId, contactId, onGenerated }:
           renders both in the narrow Deal-form Sheet (a fixed side panel,
           always narrow regardless of the browser's own width) and the
           full-width standalone Tasks panel, and a 4-col row overflows
-          the Sheet at wider browser viewports. */}
+          the Sheet at wider browser viewports.
+
+          The date input and the type select each get their own full
+          row (col-span-2): squeezed to half width, native date/select
+          controls can end up too cramped to render their placeholder
+          text on mobile, showing as a blank box. Day-of-month/
+          repetitions are plain narrow number inputs, so they're safe
+          to pair up in a half-width row. */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="grid gap-1">
+        <div className="col-span-2 grid gap-1">
           <Label className="text-[11px] text-muted-foreground">{t("startDate")}</Label>
           <Input
             type="date"
@@ -130,7 +137,7 @@ export function RecurringTaskForm({ accountId, dealId, contactId, onGenerated }:
             className="h-9 border-border bg-muted text-xs text-foreground"
           />
         </div>
-        <div className="grid gap-1">
+        <div className="col-span-2 grid gap-1">
           <Label className="text-[11px] text-muted-foreground">{t("type")}</Label>
           <select
             value={taskType}

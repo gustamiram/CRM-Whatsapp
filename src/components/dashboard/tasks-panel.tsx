@@ -340,6 +340,11 @@ export function TasksPanel() {
               )}
             </div>
 
+            {/* datetime-local gets its own full-width row on mobile
+                (col-span-2): squeezed to half width, the native picker
+                can end up too cramped to render its placeholder text,
+                showing as a blank box. The two selects/button pair up
+                fine since they're plain text controls. */}
             <div className="mt-4 grid grid-cols-2 gap-1.5 border-t border-border pt-4 sm:grid-cols-4">
               <Input
                 value={title}
@@ -357,12 +362,6 @@ export function TasksPanel() {
                 <option value="billing">{t('taskTypes.billing')}</option>
                 <option value="proposal_followup">{t('taskTypes.proposal_followup')}</option>
               </select>
-              <Input
-                type="datetime-local"
-                value={dueAt}
-                onChange={(e) => setDueAt(e.target.value)}
-                className="h-8 border-border bg-muted text-xs text-foreground"
-              />
               {isAiSendTaskType(taskType) ? (
                 <select
                   value={contactId}
@@ -387,6 +386,12 @@ export function TasksPanel() {
                   {t('addTask')}
                 </Button>
               )}
+              <Input
+                type="datetime-local"
+                value={dueAt}
+                onChange={(e) => setDueAt(e.target.value)}
+                className="col-span-2 h-8 border-border bg-muted text-xs text-foreground sm:col-span-1"
+              />
               {isAiSendTaskType(taskType) && (
                 <label className="col-span-2 flex items-center gap-1.5 text-[11px] text-muted-foreground sm:col-span-4">
                   <input
