@@ -1,7 +1,7 @@
 "use client";
 
 import type { Deal, PipelineStage } from "@/types";
-import { Calendar, Check, MoveHorizontal, X } from "lucide-react";
+import { Calendar, Check, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
 
@@ -123,19 +123,19 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         </div>
       </div>
 
-      {/* Drag affordance — a horizontal-move icon on the card's right
-          edge. The whole card is draggable (the wrapper carries the dnd
-          listeners) and only a sideways gesture starts a drag (vertical
-          gestures scroll the page), so a left/right arrow communicates
-          the interaction. Hidden from the accessibility tree since it
-          isn't a separate control. */}
+      {/* Drag affordance — a drag-gesture glyph on the card's right
+          edge (the user-provided icon, applied as a CSS mask so it
+          recolors with the current text color). The whole card is
+          draggable; on mobile a short press-and-hold starts the drag.
+          Hidden from the accessibility tree since it isn't a separate
+          control. */}
       <span
         aria-hidden
-        className={`flex shrink-0 items-center self-stretch text-muted-foreground/30 transition-colors group-hover:text-muted-foreground/60 ${
+        className={`flex shrink-0 items-center self-stretch text-muted-foreground/40 transition-colors group-hover:text-muted-foreground/70 ${
           isOverlay ? "cursor-grabbing" : "cursor-grab"
         }`}
       >
-        <MoveHorizontal className="h-4 w-4" />
+        <span className="icon-drag-gesture h-5 w-5" />
       </span>
     </button>
   );

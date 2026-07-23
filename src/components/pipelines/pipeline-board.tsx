@@ -5,7 +5,8 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -56,10 +57,20 @@ export function PipelineBoard({
   }, [sortedStages, deals]);
 
   const sensors = useSensors(
-    // 5px activation distance avoids clicks being interpreted as drags.
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    // Keyboard drag support: focus a card, Space to pick up, arrows to move,
-    // Space to drop, Escape to cancel.
+    // Desktop (mouse): 5px activation distance so clicks aren't read as
+    // drags.
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    // Touch (mobile): press-and-hold to drag. The 200ms delay lets a
+    // quick swipe scroll the page/board normally — the drag only starts
+    // if the finger is held roughly still for the delay; moving more
+    // than `tolerance` px during it cancels activation (so it scrolls
+    // instead). This is what keeps scrolling and dragging from being
+    // confused on touch.
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
+    // Keyboard drag support: focus a card, Space to pick up, arrows to
+    // move, Space to drop, Escape to cancel.
     useSensor(KeyboardSensor),
   );
 
@@ -308,17 +319,18 @@ function DraggableDealCard({
     id: deal.id,
   });
 
-  // The whole card is the drag target, but `touch-action: pan-y` lets
-  // the browser keep handling vertical gestures natively — so scrolling
-  // the page down never gets mistaken for a drag. Only a horizontal
-  // gesture is left for dnd-kit, which then starts a drag once it
-  // passes the sensor's 5px threshold; a plain tap still opens the deal.
+  // Default `touch-action` (no override) so the page and board scroll
+  // normally on touch. On mobile a drag only begins after a short
+  // press-and-hold (the TouchSensor delay), at which point dnd-kit
+  // suppresses scrolling for the duration of the drag — so a quick
+  // swipe scrolls and a deliberate hold drags. A plain tap still opens
+  // the deal.
   return (
     <div
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      style={{ opacity: isDragging ? 0.3 : 1, touchAction: "pan-y" }}
+      style={{ opacity: isDragging ? 0.3 : 1 }}
     >
       <DealCard deal={deal} stage={stage} onEdit={onEdit} />
     </div>
