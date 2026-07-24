@@ -25,6 +25,7 @@ import {
   Clock,
   ArrowLeft,
   RefreshCw,
+  History,
   PanelRightOpen,
   PanelRightClose,
 } from "lucide-react";
@@ -41,11 +42,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./message-bubble";
 import { MessageActions } from "./message-actions";
-import {
-  MessageComposer,
-  CHAT_MEDIA_BUCKET,
-  type SendMediaPayload,
-} from "./message-composer";
+import { MessageComposer, CHAT_MEDIA_BUCKET, type SendMediaPayload } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
@@ -73,10 +70,7 @@ interface MessageThreadProps {
   onNewMessage: (message: Message) => void;
   onUpdateMessage: (id: string, updates: Partial<Message>) => void;
   onStatusChange: (conversationId: string, status: ConversationStatus) => void;
-  onAssignChange: (
-    conversationId: string,
-    assignedAgentId: string | null,
-  ) => void;
+  onAssignChange: (conversationId: string, assignedAgentId: string | null) => void;
   /**
    * On mobile, the thread is shown full-screen with the conversation list
    * hidden. This callback lets the page deselect the active conversation
@@ -135,7 +129,11 @@ function groupMessagesByDate(messages: Message[]) {
   return groups;
 }
 
-const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string }[] = [
+const STATUS_OPTIONS: {
+  label: string;
+  value: ConversationStatus;
+  color: string;
+}[] = [
   { label: "Open", value: "open", color: "text-primary" },
   { label: "Pending", value: "pending", color: "text-amber-400" },
   { label: "Closed", value: "closed", color: "text-muted-foreground" },
@@ -150,8 +148,7 @@ const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string 
  * Defined once at module scope so the two render paths can't drift —
  * if we ever switch the asset, both spots update together.
  */
-const DOODLE_BG_CLASSES =
-  "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
+const DOODLE_BG_CLASSES = "bg-background bg-[url('/inbox-doodle.svg')] bg-repeat";
 
 export function MessageThread({
   conversation,
@@ -184,6 +181,7 @@ export function MessageThread({
   // parent's resyncToken); the 700ms spin is just feedback so the click
   // doesn't feel like a no-op. Cleared via the timer ref on unmount.
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSyncingHistory, setIsSyncingHistory] = useState(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     return () => {
@@ -231,9 +229,7 @@ export function MessageThread({
     if (!messages.length) return { expired: false, remaining: "" };
 
     // Find last customer message
-    const lastCustomerMsg = [...messages]
-      .reverse()
-      .find((m) => m.sender_type === "customer");
+    const lastCustomerMsg = [...messages].reverse().find((m) => m.sender_type === "customer");
 
     if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
 
@@ -267,6 +263,35 @@ export function MessageThread({
 
   const conversationId = conversation?.id;
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
+
+  const handleHistorySync = useCallback(async () => {
+    if (!conversationId || isSyncingHistory) return;
+
+    setIsSyncingHistory(true);
+    try {
+      const response = await fetch("/api/whatsapp/uazapi/history-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversationId }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(result.error || t("historySyncFailed"));
+      }
+
+      toast.success(t("historySyncRequested"));
+      // The batch arrives asynchronously through the UAZAPI webhook.
+      // Realtime normally inserts it into the open thread; this immediate
+      // refetch also catches rows that arrived before the response.
+      onRefresh?.();
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : t("historySyncFailed"));
+    } finally {
+      setIsSyncingHistory(false);
+    }
+  }, [conversationId, isSyncingHistory, onRefresh, t]);
 
   // Fetch messages whenever the selected conversation changes. Kept
   // separate from the unread-reset effect so that incoming messages
@@ -499,7 +524,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage]
+    [conversation, onNewMessage, onUpdateMessage],
   );
 
   const handleSendMedia = useCallback(
@@ -626,14 +651,11 @@ export function MessageThread({
       if (!conversation) return;
 
       const supabase = createClient();
-      await supabase
-        .from("conversations")
-        .update({ status })
-        .eq("id", conversation.id);
+      await supabase.from("conversations").update({ status }).eq("id", conversation.id);
 
       onStatusChange(conversation.id, status);
     },
-    [conversation, onStatusChange]
+    [conversation, onStatusChange],
   );
 
   const handleOpenTemplates = useCallback(() => {
@@ -735,8 +757,7 @@ export function MessageThread({
   // contact name when the customer sent it.
   const authorLabelFor = useCallback(
     (m: Message): string => {
-      const isAgentMsg =
-        m.sender_type === "agent" || m.sender_type === "bot";
+      const isAgentMsg = m.sender_type === "agent" || m.sender_type === "bot";
       return isAgentMsg ? "You" : contactDisplayName;
     },
     [contactDisplayName],
@@ -777,10 +798,7 @@ export function MessageThread({
       setReactions((prev) => {
         snapshot = prev;
         const own = prev.find(
-          (r) =>
-            r.message_id === messageId &&
-            r.actor_type === "agent" &&
-            r.actor_id === userId,
+          (r) => r.message_id === messageId && r.actor_type === "agent" && r.actor_id === userId,
         );
         if (emoji === "") return own ? prev.filter((r) => r !== own) : prev;
         if (own) return prev.map((r) => (r === own ? { ...own, emoji } : r));
@@ -844,29 +862,23 @@ export function MessageThread({
   if (!conversation || !contact) {
     return (
       <div className={cn("flex flex-1 flex-col items-center justify-center", DOODLE_BG_CLASSES)}>
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-          <MessageSquare className="h-8 w-8 text-muted-foreground" />
+        <div className="bg-muted flex h-16 w-16 items-center justify-center rounded-full">
+          <MessageSquare className="text-muted-foreground h-8 w-8" />
         </div>
-        <h3 className="mt-4 text-sm font-medium text-muted-foreground">
+        <h3 className="text-muted-foreground mt-4 text-sm font-medium">
           {t("selectConversation")}
         </h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {t("selectConversationHint")}
-        </p>
+        <p className="text-muted-foreground mt-1 text-xs">{t("selectConversationHint")}</p>
       </div>
     );
   }
 
   const displayName = contact.name || contact.phone;
   const messageGroups = groupMessagesByDate(messages);
-  const currentStatus = STATUS_OPTIONS.find(
-    (s) => s.value === conversation.status
-  );
+  const currentStatus = STATUS_OPTIONS.find((s) => s.value === conversation.status);
   const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
-  const assignLabel = assignedAgentId
-    ? (currentAssignee?.full_name ?? t("assigned"))
-    : t("assign");
+  const assignLabel = assignedAgentId ? (currentAssignee?.full_name ?? t("assigned")) : t("assign");
 
   return (
     // `min-w-0` is load-bearing: the page already puts min-w-0 on the
@@ -880,7 +892,7 @@ export function MessageThread({
     <div className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
+      <div className="border-border bg-card flex items-center justify-between gap-2 border-b px-3 py-3 sm:px-4">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           {/* Back-to-list button — mobile only. Hidden on lg+ where the
               conversation list is always visible next to the thread. */}
@@ -889,25 +901,25 @@ export function MessageThread({
               type="button"
               onClick={onBack}
               aria-label={t("backToConversations")}
-              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+              className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md lg:hidden"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+          <div className="bg-muted text-foreground flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-medium">
             {displayName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
+            <h2 className="text-foreground truncate text-sm font-semibold">{displayName}</h2>
+            <p className="text-muted-foreground truncate text-xs">{contact.phone}</p>
           </div>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}
           <Badge
             variant="outline"
             className={cn(
-              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
-              sessionInfo.expired ? "text-red-400" : "text-primary"
+              "border-border ml-1 hidden gap-1 text-[10px] sm:ml-2 sm:inline-flex",
+              sessionInfo.expired ? "text-red-400" : "text-primary",
             )}
           >
             <Clock className="h-3 w-3" />
@@ -925,13 +937,11 @@ export function MessageThread({
             <button
               type="button"
               onClick={onToggleContactPanel}
-              aria-label={
-                contactPanelOpen ? t("hideContactPanel") : t("showContactPanel")
-              }
+              aria-label={contactPanelOpen ? t("hideContactPanel") : t("showContactPanel")}
               title={contactPanelOpen ? t("hideContact") : t("showContact")}
               aria-pressed={contactPanelOpen}
               className={cn(
-                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
+                "hover:bg-muted hover:text-foreground hidden h-7 w-7 items-center justify-center rounded-md transition-colors lg:inline-flex",
                 contactPanelOpen ? "text-primary" : "text-muted-foreground",
               )}
             >
@@ -956,28 +966,43 @@ export function MessageThread({
               aria-label={t("refreshConversation")}
               title={t("refresh")}
               className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60",
+                "text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-60",
               )}
             >
-              <RefreshCw
-                className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
-              />
+              <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
             </button>
           )}
 
+          {/* Requests older messages from WhatsApp through UAZAPI. The
+              webhook streams the resulting `history` batch back into
+              this thread; only the active conversation id is sent by
+              the browser and the server resolves its protected JID. */}
+          <button
+            type="button"
+            onClick={handleHistorySync}
+            disabled={isSyncingHistory}
+            aria-label={t("syncMessages")}
+            title={t("syncMessages")}
+            className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-xs transition-colors disabled:opacity-60"
+          >
+            <History className={cn("h-3.5 w-3.5", isSyncingHistory && "animate-spin")} />
+            <span className="hidden xl:inline">
+              {isSyncingHistory ? t("syncingMessages") : t("syncMessages")}
+            </span>
+          </button>
+
           {/* Status dropdown */}
           <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  currentStatus?.color ?? "text-muted-foreground"
-                )}>
-                {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
-                <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
+            <DropdownMenuTrigger
+              className={cn(
+                "hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs",
+                currentStatus?.color ?? "text-muted-foreground",
+              )}
             >
+              {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
+              <ChevronDown className="h-3 w-3" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="border-border bg-popover">
               {STATUS_OPTIONS.map((opt) => (
                 <DropdownMenuItem
                   key={opt.value}
@@ -994,20 +1019,17 @@ export function MessageThread({
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                assignedAgentId ? "text-primary" : "text-muted-foreground"
+                "hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs",
+                assignedAgentId ? "text-primary" : "text-muted-foreground",
               )}
             >
               <UserPlus className="h-3 w-3" />
               <span className="hidden sm:inline">{assignLabel}</span>
               <ChevronDown className="h-3 w-3" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
+            <DropdownMenuContent align="end" className="border-border bg-popover">
               {profiles.length === 0 ? (
-                <DropdownMenuItem disabled className="text-sm text-muted-foreground">
+                <DropdownMenuItem disabled className="text-muted-foreground text-sm">
                   {t("noTeammates")}
                 </DropdownMenuItem>
               ) : (
@@ -1020,7 +1042,7 @@ export function MessageThread({
                       onClick={() => handleAssignChange(p.user_id)}
                       className={cn(
                         "text-sm",
-                        isSelected ? "text-primary" : "text-popover-foreground"
+                        isSelected ? "text-primary" : "text-popover-foreground",
                       )}
                     >
                       <PresenceDot
@@ -1028,7 +1050,7 @@ export function MessageThread({
                         label={presenceLabel(
                           presence,
                           getRow(p.user_id)?.last_seen_at ?? null,
-                          now
+                          now,
                         )}
                         className="mr-2"
                       />
@@ -1046,7 +1068,7 @@ export function MessageThread({
                   <DropdownMenuSeparator className="bg-border" />
                   <DropdownMenuItem
                     onClick={() => handleAssignChange(null)}
-                    className="text-sm text-muted-foreground"
+                    className="text-muted-foreground text-sm"
                   >
                     {t("unassign")}
                   </DropdownMenuItem>
@@ -1061,14 +1083,12 @@ export function MessageThread({
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-sm text-muted-foreground">{t("noMessagesYet")}</p>
-            <p className="text-xs text-muted-foreground">
-              {t("sendTemplateHint")}
-            </p>
+            <p className="text-muted-foreground text-sm">{t("noMessagesYet")}</p>
+            <p className="text-muted-foreground text-xs">{t("sendTemplateHint")}</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -1076,7 +1096,7 @@ export function MessageThread({
               <div key={group.date}>
                 {/* Date separator */}
                 <div className="mb-4 flex items-center justify-center">
-                  <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-medium text-muted-foreground">
+                  <span className="bg-muted text-muted-foreground rounded-full px-3 py-1 text-[10px] font-medium">
                     {formatDateSeparator(group.date, t)}
                   </span>
                 </div>
@@ -1090,7 +1110,7 @@ export function MessageThread({
                       ? {
                           authorLabel:
                             parent.sender_type === "agent" || parent.sender_type === "bot"
-                              ? t("me") 
+                              ? t("me")
                               : contact?.name || contact?.phone || "Unknown",
                           preview: buildReplyPreview(parent, tQuote),
                         }
@@ -1100,9 +1120,7 @@ export function MessageThread({
                     // and `user?.id` are already in scope, no extra hook.
                     const handlePillToggle = (emoji: string) => {
                       const own = msgReactions?.find(
-                        (r) =>
-                          r.actor_type === "agent" &&
-                          r.actor_id === user?.id,
+                        (r) => r.actor_type === "agent" && r.actor_id === user?.id,
                       );
                       const next = own?.emoji === emoji ? "" : emoji;
                       void postReaction(msg.id, next);

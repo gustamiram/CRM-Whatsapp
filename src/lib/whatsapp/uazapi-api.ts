@@ -79,13 +79,13 @@ export interface UazapiInstanceSnapshot {
 /** Pull the instance object out of the various response shapes UAZAPI
  *  uses (`{ instance: {...} }`, or the instance fields at top level). */
 function pickInstance(data: Record<string, unknown>): UazapiInstanceSnapshot {
-  const inst =
-    (data.instance as Record<string, unknown> | undefined) ?? data;
+  const inst = (data.instance as Record<string, unknown> | undefined) ?? data;
   return {
     id: (inst.id as string) ?? undefined,
     status: (inst.status as string) ?? (data.status as string) ?? undefined,
     qrcode: (inst.qrcode as string) ?? (data.qrcode as string) ?? undefined,
-    paircode: (inst.paircode as string) ?? (data.paircode as string) ?? undefined,
+    paircode:
+      (inst.paircode as string) ?? (data.paircode as string) ?? undefined,
     profileName: (inst.profileName as string) ?? undefined,
     owner: (inst.owner as string) ?? undefined,
     token: (data.token as string) ?? (inst.token as string) ?? undefined,
@@ -191,6 +191,45 @@ export async function setWebhook(args: SetWebhookArgs): Promise<void> {
 }
 
 // ------------------------------------------------------------
+// History
+// ------------------------------------------------------------
+
+export interface UazapiHistorySyncArgs extends InstanceTokenArgs {
+  /** Complete chat JID (`5511...@s.whatsapp.net` or `<lid>@lid`). */
+  number: string;
+  /** Number of older messages requested by UAZAPI (hard limit: 100). */
+  count?: number;
+  /** Optional anchor; history is loaded backwards from this message. */
+  messageId?: string;
+}
+
+/**
+ * Ask WhatsApp to send an older history batch for one chat.
+ *
+ * UAZAPI acknowledges this request synchronously, then delivers the
+ * messages asynchronously through the configured `history` webhook.
+ * The webhook ingestion path is responsible for persistence and
+ * duplicate suppression.
+ */
+export async function requestHistorySync(
+  args: UazapiHistorySyncArgs
+): Promise<Record<string, unknown>> {
+  const count = Math.min(100, Math.max(1, Math.trunc(args.count ?? 100)));
+  const body: Record<string, unknown> = {
+    number: args.number,
+    mode: 'history',
+    count,
+  };
+  if (args.messageId) body.messageid = args.messageId;
+
+  return uazapiRequest(args.baseUrl, '/message/history-sync', {
+    authHeader: 'token',
+    authValue: args.instanceToken,
+    body,
+  });
+}
+
+// ------------------------------------------------------------
 // Sending
 // ------------------------------------------------------------
 
@@ -223,12 +262,7 @@ export async function uazapiSendText(
 
 /** UAZAPI media type keyword. Meta's MediaKind maps 1:1 for our uses. */
 export type UazapiMediaType =
-  | 'image'
-  | 'video'
-  | 'document'
-  | 'audio'
-  | 'ptt'
-  | 'sticker';
+  'image' | 'video' | 'document' | 'audio' | 'ptt' | 'sticker';
 
 export interface UazapiSendMediaArgs extends InstanceTokenArgs {
   number: string;

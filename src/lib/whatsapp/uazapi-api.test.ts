@@ -3,12 +3,18 @@ import {
   createInstance,
   connectInstance,
   getInstanceStatus,
+  requestHistorySync,
   setWebhook,
 } from './uazapi-api';
 
 function fakeResponse(body: unknown, { ok = true, status = 200 } = {}) {
   const text = JSON.stringify(body);
-  return { ok, status, text: async () => text, json: async () => body } as Response;
+  return {
+    ok,
+    status,
+    text: async () => text,
+    json: async () => body,
+  } as Response;
 }
 
 function stubFetch(body: unknown, opts?: { ok?: boolean; status?: number }) {
@@ -31,10 +37,15 @@ describe('uazapi-api', () => {
       name: 'wacrm-abc',
     });
     expect(result).toEqual({ instanceToken: 'inst-tok', instanceId: 'inst-1' });
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
     // Trailing slash on baseUrl is normalized away.
     expect(url).toBe('https://demo.uazapi.com/instance/create');
-    expect((init.headers as Record<string, string>).admintoken).toBe('admin-xyz');
+    expect((init.headers as Record<string, string>).admintoken).toBe(
+      'admin-xyz'
+    );
     expect((init.headers as Record<string, string>).token).toBeUndefined();
     expect(JSON.parse(init.body as string)).toEqual({ name: 'wacrm-abc' });
   });
@@ -68,7 +79,10 @@ describe('uazapi-api', () => {
     });
     expect(snap.status).toBe('connected');
     expect(snap.profileName).toBe('Acme');
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
     expect(init.method).toBe('GET');
   });
 
@@ -79,7 +93,10 @@ describe('uazapi-api', () => {
       instanceToken: 'tok',
       url: 'https://crm.example.com/api/whatsapp/uazapi/webhook/secret',
     });
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
     expect(url).toBe('https://demo.uazapi.com/webhook');
     const body = JSON.parse(init.body as string);
     expect(body.excludeMessages).toContain('wasSentByApi');
@@ -87,10 +104,62 @@ describe('uazapi-api', () => {
     expect(body.url).toContain('/uazapi/webhook/secret');
   });
 
+  it('requestHistorySync requests up to 100 older messages for one chat', async () => {
+    const fetchMock = stubFetch({ success: true });
+    const result = await requestHistorySync({
+      baseUrl: 'https://demo.uazapi.com/',
+      instanceToken: 'inst-tok',
+      number: '5511999999999@s.whatsapp.net',
+      count: 250,
+    });
+
+    expect(result).toEqual({ success: true });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe('https://demo.uazapi.com/message/history-sync');
+    expect((init.headers as Record<string, string>).token).toBe('inst-tok');
+    expect(JSON.parse(init.body as string)).toEqual({
+      number: '5511999999999@s.whatsapp.net',
+      mode: 'history',
+      count: 100,
+    });
+  });
+
+  it('requestHistorySync includes an optional anchor message', async () => {
+    const fetchMock = stubFetch({ success: true });
+    await requestHistorySync({
+      baseUrl: 'https://demo.uazapi.com',
+      instanceToken: 'inst-tok',
+      number: '123456@lid',
+      count: 20,
+      messageId: '3EB01234567890ABCDEF',
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(JSON.parse(init.body as string)).toEqual({
+      number: '123456@lid',
+      mode: 'history',
+      count: 20,
+      messageid: '3EB01234567890ABCDEF',
+    });
+  });
+
   it('throws with the server error message on a non-2xx', async () => {
-    stubFetch({ error: 'Invalid AdminToken Header' }, { ok: false, status: 403 });
+    stubFetch(
+      { error: 'Invalid AdminToken Header' },
+      { ok: false, status: 403 }
+    );
     await expect(
-      createInstance({ baseUrl: 'https://demo.uazapi.com', adminToken: 'bad', name: 'n' })
+      createInstance({
+        baseUrl: 'https://demo.uazapi.com',
+        adminToken: 'bad',
+        name: 'n',
+      })
     ).rejects.toThrow('Invalid AdminToken Header');
   });
 });

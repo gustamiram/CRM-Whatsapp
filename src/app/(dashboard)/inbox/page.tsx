@@ -219,7 +219,11 @@ export default function InboxPage() {
             const withoutOptimistic = prev.filter(
               (m) => !m.id.startsWith("temp-")
             );
-            return [...withoutOptimistic, newMsg];
+            return [...withoutOptimistic, newMsg].sort(
+              (a, b) =>
+                new Date(a.created_at).getTime() -
+                new Date(b.created_at).getTime()
+            );
           });
         }
 
@@ -230,19 +234,28 @@ export default function InboxPage() {
         // always read false here.
         if (knownConvIdsRef.current.has(newMsg.conversation_id)) {
           setConversations((prev) =>
-            prev.map((c) =>
-              c.id === newMsg.conversation_id
-                ? {
-                    ...c,
-                    last_message_text: newMsg.content_text ?? "",
-                    last_message_at: newMsg.created_at,
-                    unread_count:
-                      activeConversation?.id === newMsg.conversation_id
-                        ? 0
-                        : c.unread_count + 1,
-                  }
-                : c,
-            ),
+            prev.map((c) => {
+              if (c.id !== newMsg.conversation_id) return c;
+
+              // History-sync emits ordinary INSERT events for old rows.
+              // Keep those rows in the thread, but don't let them replace
+              // the latest-message preview or count as newly unread.
+              const isNewerThanPreview =
+                !c.last_message_at ||
+                new Date(newMsg.created_at).getTime() >=
+                  new Date(c.last_message_at).getTime();
+              if (!isNewerThanPreview) return c;
+
+              return {
+                ...c,
+                last_message_text: newMsg.content_text ?? "",
+                last_message_at: newMsg.created_at,
+                unread_count:
+                  activeConversation?.id === newMsg.conversation_id
+                    ? 0
+                    : c.unread_count + 1,
+              };
+            }),
           );
         } else {
           // First time we're seeing this conv: the conv-INSERT event
