@@ -276,15 +276,25 @@ export function MessageThread({
       });
       const result = (await response.json().catch(() => ({}))) as {
         error?: string;
+        imported?: number;
+        truncated?: boolean;
       };
       if (!response.ok) {
         throw new Error(result.error || t("historySyncFailed"));
       }
 
-      toast.success(t("historySyncRequested"));
-      // The batch arrives asynchronously through the UAZAPI webhook.
-      // Realtime normally inserts it into the open thread; this immediate
-      // refetch also catches rows that arrived before the response.
+      const imported = result.imported ?? 0;
+      if (imported > 0) {
+        toast.success(t("historySyncImported", { count: imported }));
+      } else {
+        toast.info(t("historySyncNoNewMessages"));
+      }
+      if (result.truncated) {
+        toast.warning(t("historySyncTruncated"));
+      }
+      // Locally stored messages were imported before this response.
+      // Realtime normally inserts them into the open thread; this
+      // explicit refetch also covers a delayed or disconnected channel.
       onRefresh?.();
     } catch (err) {
       toast.error(err instanceof Error && err.message ? err.message : t("historySyncFailed"));
@@ -973,10 +983,9 @@ export function MessageThread({
             </button>
           )}
 
-          {/* Requests older messages from WhatsApp through UAZAPI. The
-              webhook streams the resulting `history` batch back into
-              this thread; only the active conversation id is sent by
-              the browser and the server resolves its protected JID. */}
+          {/* Imports messages already stored by UAZAPI, then requests
+              older history from WhatsApp. Only the active conversation
+              id is sent; the server resolves its protected JID. */}
           <button
             type="button"
             onClick={handleHistorySync}

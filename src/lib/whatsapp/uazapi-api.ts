@@ -194,6 +194,101 @@ export async function setWebhook(args: SetWebhookArgs): Promise<void> {
 // History
 // ------------------------------------------------------------
 
+// A UAZAPI message object (a subset of the /message/find schema).
+// Extra fields are intentionally allowed because media payloads vary
+// between server versions.
+export interface UazapiMessage {
+  id?: string;
+  messageid?: string;
+  chatid?: string;
+  sender?: string;
+  sender_pn?: string;
+  sender_lid?: string;
+  senderName?: string;
+  isGroup?: boolean;
+  fromMe?: boolean;
+  wasSentByApi?: boolean;
+  messageType?: string;
+  messageTimestamp?: number;
+  status?: string;
+  text?: string;
+  quoted?: string;
+  reaction?: string;
+  mediaUrl?: string;
+  file?: string;
+  fileURL?: string;
+  content?: string | { URL?: string; mediaKey?: string; mimetype?: string };
+  mimetype?: string;
+  caption?: string;
+  selectedId?: string;
+  buttonId?: string;
+  vote?: string;
+  [key: string]: unknown;
+}
+
+export interface UazapiFindMessagesArgs extends InstanceTokenArgs {
+  /** Complete chat JID to filter the provider-side message store. */
+  chatId: string;
+  /** Page size. UAZAPI defaults to 100. */
+  limit?: number;
+  /** Zero-based result offset; results are newest first. */
+  offset?: number;
+}
+
+export interface UazapiFindMessagesResult {
+  messages: UazapiMessage[];
+  returnedMessages: number;
+  limit: number;
+  offset: number;
+  nextOffset: number;
+  hasMore: boolean;
+}
+
+/** Read one page of messages already persisted by UAZAPI for a chat. */
+export async function findMessages(
+  args: UazapiFindMessagesArgs
+): Promise<UazapiFindMessagesResult> {
+  const limit = Math.max(1, Math.trunc(args.limit ?? 100));
+  const offset = Math.max(0, Math.trunc(args.offset ?? 0));
+  const data = await uazapiRequest(args.baseUrl, '/message/find', {
+    authHeader: 'token',
+    authValue: args.instanceToken,
+    body: {
+      chatid: args.chatId,
+      limit,
+      offset,
+    },
+  });
+
+  const messages = Array.isArray(data.messages)
+    ? data.messages.filter(
+        (message): message is UazapiMessage =>
+          Boolean(message) && typeof message === 'object'
+      )
+    : [];
+  const returnedMessages = Number.isFinite(Number(data.returnedMessages))
+    ? Math.max(0, Math.trunc(Number(data.returnedMessages)))
+    : messages.length;
+  const responseLimit = Number.isFinite(Number(data.limit))
+    ? Math.max(1, Math.trunc(Number(data.limit)))
+    : limit;
+  const responseOffset = Number.isFinite(Number(data.offset))
+    ? Math.max(0, Math.trunc(Number(data.offset)))
+    : offset;
+  const nextOffset = Number.isFinite(Number(data.nextOffset))
+    ? Math.max(responseOffset, Math.trunc(Number(data.nextOffset)))
+    : responseOffset + returnedMessages;
+
+  return {
+    messages,
+    returnedMessages,
+    limit: responseLimit,
+    offset: responseOffset,
+    nextOffset,
+    hasMore: data.hasMore === true,
+  };
+}
+
 export interface UazapiHistorySyncArgs extends InstanceTokenArgs {
   /** Complete chat JID (`5511...@s.whatsapp.net` or `<lid>@lid`). */
   number: string;

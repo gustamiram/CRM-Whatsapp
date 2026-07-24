@@ -58,6 +58,7 @@ interface UazapiMessage {
   reaction?: string
   // Media / interactive (best-effort — presence varies by version):
   mediaUrl?: string
+  fileURL?: string
   file?: string
   /**
    * For `document`/`image`-type messages, UAZAPI re-hosts an
@@ -109,6 +110,7 @@ function mediaUrlOf(msg: UazapiMessage): string | null {
   // see the diagnostic log below.
   const candidates = [
     msg.mediaUrl,
+    msg.fileURL,
     msg.file,
     msg.content,
     msg.audio as unknown,

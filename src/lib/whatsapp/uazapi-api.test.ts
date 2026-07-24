@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createInstance,
   connectInstance,
+  findMessages,
   getInstanceStatus,
   requestHistorySync,
   setWebhook,
@@ -124,6 +125,48 @@ describe('uazapi-api', () => {
       number: '5511999999999@s.whatsapp.net',
       mode: 'history',
       count: 100,
+    });
+  });
+
+  it('findMessages reads a paginated chat page from the provider store', async () => {
+    const fetchMock = stubFetch({
+      returnedMessages: 2,
+      messages: [
+        {
+          messageid: 'msg-2',
+          chatid: '5511999999999@s.whatsapp.net',
+        },
+        {
+          messageid: 'msg-1',
+          chatid: '5511999999999@s.whatsapp.net',
+        },
+      ],
+      limit: 100,
+      offset: 0,
+      nextOffset: 2,
+      hasMore: true,
+    });
+
+    const result = await findMessages({
+      baseUrl: 'https://demo.uazapi.com/',
+      instanceToken: 'inst-tok',
+      chatId: '5511999999999@s.whatsapp.net',
+      limit: 100,
+      offset: 0,
+    });
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.nextOffset).toBe(2);
+    expect(result.hasMore).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe('https://demo.uazapi.com/message/find');
+    expect(JSON.parse(init.body as string)).toEqual({
+      chatid: '5511999999999@s.whatsapp.net',
+      limit: 100,
+      offset: 0,
     });
   });
 
