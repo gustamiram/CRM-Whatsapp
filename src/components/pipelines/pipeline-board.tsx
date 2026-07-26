@@ -449,12 +449,28 @@ function DraggableDealCard({
   // page scrolling natively while leaving horizontal gestures on the
   // card to dnd-kit (paired with the horizontal-only distance
   // constraint on TouchSensor above) — a plain tap still opens the deal.
+  //
+  // userSelect/WebkitUserSelect/WebkitTouchCallout: "none" — without
+  // these, a touch-and-hold on the card's text (the title, contact tag,
+  // etc.) can trigger the phone's native "select text" gesture before
+  // dnd-kit's touch sensor recognizes the sideways movement as a drag,
+  // hijacking the whole touch sequence into text selection instead
+  // (reported as the drag "getting confused with a click and selecting
+  // text"). dnd-kit's own sensor only clears an existing selection
+  // reactively, after a drag activates — this prevents the browser's
+  // selection UI from ever appearing in the first place.
   return (
     <div
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      style={{ opacity: isDragging ? 0.3 : 1, touchAction: "pan-y" }}
+      style={{
+        opacity: isDragging ? 0.3 : 1,
+        touchAction: "pan-y",
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
+      }}
     >
       <DealCard
         deal={deal}
