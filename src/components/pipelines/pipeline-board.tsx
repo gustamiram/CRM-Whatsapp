@@ -120,14 +120,25 @@ export function PipelineBoard({
     // Desktop (mouse): 5px activation distance so clicks aren't read as
     // drags.
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    // Touch (mobile): press-and-hold to drag. The 200ms delay lets a
-    // quick swipe scroll the page/board normally — the drag only starts
-    // if the finger is held roughly still for the delay; moving more
-    // than `tolerance` px during it cancels activation (so it scrolls
-    // instead). This is what keeps scrolling and dragging from being
-    // confused on touch.
+    // Touch (mobile): activate only on HORIZONTAL movement — `distance:
+    // {x: 8}` (an object with only `x`) makes dnd-kit ignore vertical
+    // delta entirely per its own hasExceededDistance check, so a
+    // vertical swipe never counts as "exceeded" and never activates a
+    // drag, no matter how far it moves. Combined with `touch-action:
+    // pan-y` on the card (see DraggableDealCard below — NOT `none`,
+    // which blocked native scroll entirely and caused the original
+    // "scroll gets read as drag" bug, and NOT the default `auto`, which
+    // let the pipeline board's own horizontal scroll steal a sideways
+    // drag before dnd-kit ever saw it): a vertical touch scrolls the
+    // page natively, untouched by JS, while a horizontal touch is never
+    // eligible for native scrolling and reliably starts a drag instead.
+    // A delay-based activation was tried first but proved unreliable —
+    // touch-action's native gesture recognition can already commit to
+    // scrolling before a JS delay timer fires, regardless of how the
+    // timer is configured; the axis-based distance check sidesteps that
+    // entirely by making the *browser* responsible for the axis split.
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 8 },
+      activationConstraint: { distance: { x: 8 } },
     }),
     // Keyboard drag support: focus a card, Space to pick up, arrows to
     // move, Space to drop, Escape to cancel.
@@ -409,18 +420,23 @@ function DraggableDealCard({
     id: deal.id,
   });
 
-  // Default `touch-action` (no override) so the page and board scroll
-  // normally on touch. On mobile a drag only begins after a short
-  // press-and-hold (the TouchSensor delay), at which point dnd-kit
-  // suppresses scrolling for the duration of the drag — so a quick
-  // swipe scrolls and a deliberate hold drags. A plain tap still opens
-  // the deal.
+  // `touch-action: pan-y` — critical, not `none` and not the default
+  // `auto`. `none` (an earlier version) blocked native scroll entirely,
+  // so any touch on a card — including a vertical scroll attempt — got
+  // read as a drag. The default `auto` (a later version) went too far
+  // the other way: it let the pipeline board's own horizontal scroll
+  // natively claim a sideways touch on a card before dnd-kit's touch
+  // sensor ever saw it, so cards couldn't be dragged at all. `pan-y`
+  // is the one setting that lets the browser keep handling vertical
+  // page scrolling natively while leaving horizontal gestures on the
+  // card to dnd-kit (paired with the horizontal-only distance
+  // constraint on TouchSensor above) — a plain tap still opens the deal.
   return (
     <div
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      style={{ opacity: isDragging ? 0.3 : 1 }}
+      style={{ opacity: isDragging ? 0.3 : 1, touchAction: "pan-y" }}
     >
       <DealCard deal={deal} stage={stage} onEdit={onEdit} />
     </div>
