@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,6 +13,7 @@ import {
   useDraggable,
   closestCorners,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import type { Deal, PipelineStage } from "@/types";
@@ -40,6 +41,58 @@ export function PipelineBoard({
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
+
+  // Bespoke horizontal auto-scroll for the board, driven by the dragged
+  // card's own position rather than dnd-kit's built-in autoScroll
+  // (disabled below via `autoScroll={false}`). The built-in one scrolls
+  // the nearest scrollable ancestor based on proximity to ITS edges,
+  // but on a narrow mobile viewport that container's edges coincide
+  // with the screen edges — reaching "close enough" to trigger it is
+  // unreliable on touch. This version explicitly tracks the dragged
+  // card's center via onDragMove/onDragStart and runs its own rAF loop
+  // scrolling `.pipeline-scroll` (ref below) whenever that point is
+  // within EDGE_ZONE_PX of the container's left/right edge — so
+  // dragging a card toward a column that's off-screen (e.g. straight to
+  // the 3rd column) reliably scrolls the board into view.
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const draggedCenterXRef = useRef<number | null>(null);
+  const autoScrollFrameRef = useRef<number | null>(null);
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollFrameRef.current != null) {
+      cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
+    }
+    draggedCenterXRef.current = null;
+  }, []);
+
+  const startAutoScroll = useCallback(() => {
+    const EDGE_ZONE_PX = 56;
+    const MAX_SPEED_PX = 16;
+
+    function tick() {
+      const container = scrollContainerRef.current;
+      const centerX = draggedCenterXRef.current;
+      if (container && centerX != null) {
+        const rect = container.getBoundingClientRect();
+        const distanceFromLeft = centerX - rect.left;
+        const distanceFromRight = rect.right - centerX;
+        if (distanceFromLeft < EDGE_ZONE_PX) {
+          const intensity = Math.min(1, Math.max(0, (EDGE_ZONE_PX - distanceFromLeft) / EDGE_ZONE_PX));
+          container.scrollLeft -= MAX_SPEED_PX * intensity;
+        } else if (distanceFromRight < EDGE_ZONE_PX) {
+          const intensity = Math.min(1, Math.max(0, (EDGE_ZONE_PX - distanceFromRight) / EDGE_ZONE_PX));
+          container.scrollLeft += MAX_SPEED_PX * intensity;
+        }
+      }
+      autoScrollFrameRef.current = requestAnimationFrame(tick);
+    }
+
+    autoScrollFrameRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  // Stop the rAF loop if the component unmounts mid-drag.
+  useEffect(() => stopAutoScroll, [stopAutoScroll]);
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
@@ -78,11 +131,23 @@ export function PipelineBoard({
     ? deals.find((d) => d.id === activeDealId) ?? null
     : null;
 
+  function trackDraggedCenter(event: DragStartEvent | DragMoveEvent) {
+    const rect = event.active.rect.current.translated ?? event.active.rect.current.initial;
+    if (rect) draggedCenterXRef.current = (rect.left + rect.right) / 2;
+  }
+
   function handleDragStart(event: DragStartEvent) {
     setActiveDealId(String(event.active.id));
+    trackDraggedCenter(event);
+    startAutoScroll();
+  }
+
+  function handleDragMove(event: DragMoveEvent) {
+    trackDraggedCenter(event);
   }
 
   function handleDragEnd(event: DragEndEvent) {
+    stopAutoScroll();
     setActiveDealId(null);
     const { active, over } = event;
     if (!over) return;
@@ -97,6 +162,7 @@ export function PipelineBoard({
   }
 
   function handleDragCancel() {
+    stopAutoScroll();
     setActiveDealId(null);
   }
 
@@ -104,7 +170,13 @@ export function PipelineBoard({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCorners}
+      // The board runs its own horizontal auto-scroll (see
+      // startAutoScroll above) instead of dnd-kit's built-in one, which
+      // is unreliable here on touch — disable it to avoid the two
+      // fighting over `.pipeline-scroll`'s scrollLeft.
+      autoScroll={false}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
@@ -114,7 +186,10 @@ export function PipelineBoard({
           natural layout. The board can still overflow horizontally on
           lg+ once a pipeline has many stages (columns keep a 260px
           min-width), so a thin scrollbar stays visible on desktop. */}
-      <div className="pipeline-scroll flex snap-x snap-mandatory gap-2 overflow-x-auto pb-4 lg:snap-none">
+      <div
+        ref={scrollContainerRef}
+        className="pipeline-scroll flex snap-x snap-mandatory gap-2 overflow-x-auto pb-4 lg:snap-none"
+      >
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
           const totalValue = stageDeals.reduce(

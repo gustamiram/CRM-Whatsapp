@@ -381,7 +381,7 @@ export function DealForm({
   }, [t]);
 
   async function handleSave() {
-    if (!title.trim() || !contactId || !stageId) {
+    if (!title.trim() || !stageId) {
       toast.error(t("toastRequired"));
       return;
     }
@@ -391,7 +391,9 @@ export function DealForm({
       title: title.trim(),
       value: parseFloat(value) || 0,
       currency,
-      contact_id: contactId,
+      // contact_id is nullable — a deal doesn't have to be tied to a
+      // contact to be saved (e.g. a standalone reminder/opportunity).
+      contact_id: contactId || null,
       pipeline_id: pipelineId,
       stage_id: stageId,
       assigned_to: assignedTo || null,
@@ -1034,7 +1036,7 @@ export function DealForm({
               </Button>
               <Button
                 onClick={handleSave}
-                disabled={saving || !title.trim() || !contactId || !stageId}
+                disabled={saving || !title.trim() || !stageId}
                 className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {saving ? t("saving") : deal ? t("saveChanges") : t("createDeal")}
