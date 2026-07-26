@@ -13,7 +13,6 @@ import {
   useDraggable,
   closestCorners,
   type DragEndEvent,
-  type DragMoveEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import type { Deal, PipelineStage } from "@/types";
@@ -42,41 +41,49 @@ export function PipelineBoard({
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
 
-  // Bespoke horizontal auto-scroll for the board, driven by the dragged
-  // card's own position rather than dnd-kit's built-in autoScroll
-  // (disabled below via `autoScroll={false}`). The built-in one scrolls
-  // the nearest scrollable ancestor based on proximity to ITS edges,
-  // but on a narrow mobile viewport that container's edges coincide
-  // with the screen edges — reaching "close enough" to trigger it is
-  // unreliable on touch. This version explicitly tracks the dragged
-  // card's center via onDragMove/onDragStart and runs its own rAF loop
-  // scrolling `.pipeline-scroll` (ref below) whenever that point is
-  // within EDGE_ZONE_PX of the container's left/right edge — so
-  // dragging a card toward a column that's off-screen (e.g. straight to
-  // the 3rd column) reliably scrolls the board into view.
+  // Bespoke horizontal auto-scroll for the board (dnd-kit's built-in
+  // autoScroll is disabled below via `autoScroll={false}`, since it
+  // scrolls based on proximity to the nearest scrollable ancestor's
+  // edges — on a narrow mobile viewport that edge coincides with the
+  // screen edge, making the built-in one unreliable on touch).
+  //
+  // This version tracks the real, raw pointer position directly via a
+  // native `pointermove` listener on `window` — NOT dnd-kit's
+  // `active.rect.current` (an earlier version used that, but it's
+  // populated by dnd-kit in a layout effect and can read one tick
+  // stale relative to the actual finger position, which showed up as
+  // dragging toward one edge working while the other didn't). Pointer
+  // Events unify mouse/touch/pen, so one listener covers both.
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const draggedCenterXRef = useRef<number | null>(null);
+  const pointerXRef = useRef<number | null>(null);
   const autoScrollFrameRef = useRef<number | null>(null);
+
+  const handlePointerMove = useCallback((event: PointerEvent) => {
+    pointerXRef.current = event.clientX;
+  }, []);
 
   const stopAutoScroll = useCallback(() => {
     if (autoScrollFrameRef.current != null) {
       cancelAnimationFrame(autoScrollFrameRef.current);
       autoScrollFrameRef.current = null;
     }
-    draggedCenterXRef.current = null;
-  }, []);
+    window.removeEventListener("pointermove", handlePointerMove);
+    pointerXRef.current = null;
+  }, [handlePointerMove]);
 
   const startAutoScroll = useCallback(() => {
     const EDGE_ZONE_PX = 56;
     const MAX_SPEED_PX = 16;
 
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+
     function tick() {
       const container = scrollContainerRef.current;
-      const centerX = draggedCenterXRef.current;
-      if (container && centerX != null) {
+      const x = pointerXRef.current;
+      if (container && x != null) {
         const rect = container.getBoundingClientRect();
-        const distanceFromLeft = centerX - rect.left;
-        const distanceFromRight = rect.right - centerX;
+        const distanceFromLeft = x - rect.left;
+        const distanceFromRight = rect.right - x;
         if (distanceFromLeft < EDGE_ZONE_PX) {
           const intensity = Math.min(1, Math.max(0, (EDGE_ZONE_PX - distanceFromLeft) / EDGE_ZONE_PX));
           container.scrollLeft -= MAX_SPEED_PX * intensity;
@@ -89,9 +96,9 @@ export function PipelineBoard({
     }
 
     autoScrollFrameRef.current = requestAnimationFrame(tick);
-  }, []);
+  }, [handlePointerMove]);
 
-  // Stop the rAF loop if the component unmounts mid-drag.
+  // Stop the rAF loop + listener if the component unmounts mid-drag.
   useEffect(() => stopAutoScroll, [stopAutoScroll]);
 
   const sortedStages = useMemo(
@@ -131,19 +138,28 @@ export function PipelineBoard({
     ? deals.find((d) => d.id === activeDealId) ?? null
     : null;
 
-  function trackDraggedCenter(event: DragStartEvent | DragMoveEvent) {
-    const rect = event.active.rect.current.translated ?? event.active.rect.current.initial;
-    if (rect) draggedCenterXRef.current = (rect.left + rect.right) / 2;
-  }
-
   function handleDragStart(event: DragStartEvent) {
     setActiveDealId(String(event.active.id));
-    trackDraggedCenter(event);
+    // Seed the pointer position from the event that activated the drag
+    // (touch/mouse/pointer) so auto-scroll can react immediately, even
+    // before the finger/mouse moves again and the `pointermove`
+    // listener gets its first event.
+    const activatorEvent = event.activatorEvent;
+    if (
+      typeof PointerEvent !== "undefined" &&
+      activatorEvent instanceof PointerEvent
+    ) {
+      pointerXRef.current = activatorEvent.clientX;
+    } else if (
+      typeof TouchEvent !== "undefined" &&
+      activatorEvent instanceof TouchEvent
+    ) {
+      const touch = activatorEvent.touches[0] ?? activatorEvent.changedTouches[0];
+      if (touch) pointerXRef.current = touch.clientX;
+    } else if (activatorEvent instanceof MouseEvent) {
+      pointerXRef.current = activatorEvent.clientX;
+    }
     startAutoScroll();
-  }
-
-  function handleDragMove(event: DragMoveEvent) {
-    trackDraggedCenter(event);
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -176,7 +192,6 @@ export function PipelineBoard({
       // fighting over `.pipeline-scroll`'s scrollLeft.
       autoScroll={false}
       onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
