@@ -569,7 +569,37 @@
       "toastFailedCreatePipeline": "No se pudo crear el pipeline",
       "toastPipelineCreated": "Pipeline creado",
       "toastNotLinkedToAccount": "Tu perfil no está vinculado a ninguna cuenta.",
-      "toastNoPipeline": "Crea un pipeline primero."
+      "toastNoPipeline": "Crea un pipeline primero.",
+      "newPipelineTemplateTab": "Plantilla",
+      "newPipelineCopyTab": "Copiar pipeline",
+      "copyFromLabel": "Copiar etapas de",
+      "searchPlaceholder": "Buscar por nombre, teléfono o etiqueta...",
+      "filterByTags": "Filtrar por etiquetas",
+      "clearAll": "Limpiar todo",
+      "noTagsYet": "Aún no hay etiquetas.",
+      "toastFailedTagUpdate": "No se pudo actualizar la etiqueta",
+      "templates": {
+        "todoDoingDone": {
+          "name": "Por hacer, Haciendo, Hecho",
+          "stages": ["Por hacer", "Haciendo", "Hecho"]
+        },
+        "sales": {
+          "name": "Pipeline de ventas",
+          "stages": ["Nuevo lead", "Calificado", "Propuesta enviada", "Negociación", "Ganado"]
+        },
+        "support": {
+          "name": "Soporte",
+          "stages": ["Nuevo", "En progreso", "Esperando al cliente", "Resuelto"]
+        },
+        "recruiting": {
+          "name": "Reclutamiento",
+          "stages": ["Postulado", "Entrevista", "Oferta", "Contratado"]
+        },
+        "projectTasks": {
+          "name": "Tareas de proyecto",
+          "stages": ["Backlog", "Por hacer", "En progreso", "En revisión", "Completado"]
+        }
+      }
     },
     "board": {
       "dropDealHere": "Suelta un negocio aquí",
@@ -579,7 +609,10 @@
       "noContact": "Sin contacto",
       "won": "Ganado",
       "lost": "Perdido",
-      "dragHandle": "Arrastrar para mover"
+      "dragHandle": "Arrastrar para mover",
+      "tags": "Etiquetas",
+      "addTag": "Agregar etiqueta",
+      "removeTag": "Quitar etiqueta \"{tag}\""
     },
     "form": {
       "editDeal": "Editar negocio",

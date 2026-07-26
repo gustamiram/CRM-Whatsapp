@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Pipeline, PipelineStage, Deal } from "@/types";
+import type { Pipeline, PipelineStage, Deal, Tag } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
 import { DealForm } from "@/components/pipelines/deal-form";
@@ -22,9 +22,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { GitBranch, Plus, ChevronDown, Settings } from "lucide-react";
+import {
+  GitBranch,
+  Plus,
+  ChevronDown,
+  Settings,
+  Search,
+  Filter,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
@@ -36,13 +46,27 @@ import { useTranslations } from "next-intl";
 // agent+. The two CTAs gate on different `useCan` capabilities,
 // not on different copy.
 
-// Spec-defined seed — name and color per the product spec.
+// Spec-defined seed — name and color per the product spec. Used only by
+// the silent first-load auto-seed (seedDefaultPipeline); the "New
+// Pipeline" dialog itself offers the fuller PIPELINE_TEMPLATES list below.
 const SPEC_DEFAULT_STAGES = [
   { name: "New Lead", color: "#3b82f6", position: 0 }, // blue
   { name: "Qualified", color: "#eab308", position: 1 }, // yellow
   { name: "Proposal Sent", color: "#f97316", position: 2 }, // orange
   { name: "Negotiation", color: "#8b5cf6", position: 3 }, // purple
   { name: "Won", color: "#22c55e", position: 4 }, // green
+];
+
+// Common Kanban starting points offered in the "New Pipeline" dialog.
+// Stage names/labels come from Pipelines.page.templates.<id>.{name,stages}
+// (t.raw for the stage-name array); only the colors live here since they
+// aren't localized.
+const PIPELINE_TEMPLATES: { id: string; colors: string[] }[] = [
+  { id: "todoDoingDone", colors: ["#94a3b8", "#3b82f6", "#22c55e"] },
+  { id: "sales", colors: ["#3b82f6", "#eab308", "#f97316", "#8b5cf6", "#22c55e"] },
+  { id: "support", colors: ["#3b82f6", "#f97316", "#eab308", "#22c55e"] },
+  { id: "recruiting", colors: ["#3b82f6", "#8b5cf6", "#f97316", "#22c55e"] },
+  { id: "projectTasks", colors: ["#94a3b8", "#3b82f6", "#eab308", "#8b5cf6", "#22c55e"] },
 ];
 
 export default function PipelinesPage() {
@@ -63,6 +87,18 @@ export default function PipelinesPage() {
   const [newPipelineName, setNewPipelineName] = useState("");
   const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // "New Pipeline" dialog: either start from a common template or copy
+  // another pipeline's stages outright.
+  const [newPipelineMode, setNewPipelineMode] = useState<"template" | "copy">("template");
+  const [selectedTemplateId, setSelectedTemplateId] = useState(PIPELINE_TEMPLATES[1].id);
+  const [copyFromPipelineId, setCopyFromPipelineId] = useState("");
+
+  // All tags for the account (Inbox/Contacts tags) — powers the card's
+  // add-tag picker and the search bar's tag filter below.
+  const [tagsMap, setTagsMap] = useState<Record<string, Tag>>({});
+  const [pipelineSearch, setPipelineSearch] = useState("");
+  const [pipelineTagFilterIds, setPipelineTagFilterIds] = useState<string[]>([]);
 
   // Deal form state is lifted here so both the top-bar "Add Deal" and
   // the per-column "+" trigger the same Sheet.
@@ -104,10 +140,57 @@ export default function PipelinesPage() {
         .select("*, contact:contacts(*), assignee:profiles!deals_assigned_to_fkey(*)")
         .eq("pipeline_id", pipelineId)
         .order("created_at", { ascending: false });
-      return (data ?? []) as Deal[];
+      const dealRows = (data ?? []) as Deal[];
+
+      // Hydrate deal.contact.tags — a separate batched query (rather than
+      // embedding contact_tags(tags(*)) in the select above) keeps the
+      // main deals query simple and matches the pattern already used by
+      // contacts/page.tsx for the same join.
+      const contactIds = Array.from(
+        new Set(
+          dealRows
+            .map((d) => d.contact_id)
+            .filter((id): id is string => !!id),
+        ),
+      );
+      if (contactIds.length === 0) return dealRows;
+
+      const { data: contactTagRows } = await supabase
+        .from("contact_tags")
+        .select("contact_id, tags(*)")
+        .in("contact_id", contactIds);
+
+      const tagsByContact = new Map<string, Tag[]>();
+      (contactTagRows ?? []).forEach((row: Record<string, unknown>) => {
+        if (!row.tags) return;
+        const contactId = row.contact_id as string;
+        const list = tagsByContact.get(contactId) ?? [];
+        list.push(row.tags as Tag);
+        tagsByContact.set(contactId, list);
+      });
+
+      return dealRows.map((d) =>
+        d.contact
+          ? { ...d, contact: { ...d.contact, tags: tagsByContact.get(d.contact.id) ?? [] } }
+          : d,
+      );
     },
     [supabase],
   );
+
+  const fetchTags = useCallback(async () => {
+    const { data } = await supabase.from("tags").select("*");
+    if (data) {
+      const map: Record<string, Tag> = {};
+      data.forEach((tag) => (map[tag.id] = tag));
+      setTagsMap(map);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchTags();
+  }, [fetchTags]);
 
   const seedDefaultPipeline = useCallback(async (): Promise<Pipeline | null> => {
     const {
@@ -247,6 +330,53 @@ export default function PipelinesPage() {
     setDealFormOpen(true);
   }, []);
 
+  // Adds/removes `tag` on `contactId` (the deal-card "+" picker). Refetches
+  // deals afterward rather than patching state in place — simplest way to
+  // keep every card showing that contact in sync, not just the one clicked.
+  const handleToggleContactTag = useCallback(
+    async (contactId: string, tag: Tag, hasTag: boolean) => {
+      const { error } = hasTag
+        ? await supabase
+            .from("contact_tags")
+            .delete()
+            .eq("contact_id", contactId)
+            .eq("tag_id", tag.id)
+        : await supabase.from("contact_tags").insert({ contact_id: contactId, tag_id: tag.id });
+      if (error) {
+        toast.error(t("toastFailedTagUpdate"));
+        return;
+      }
+      await refreshDeals();
+    },
+    [supabase, refreshDeals, t],
+  );
+
+  // Broad search (contact name/phone) + tag filter — both act purely on
+  // the already-loaded `deals` array (a pipeline's deals are all fetched
+  // up front, unpaginated), so filtering is instant and client-side.
+  // Passing the filtered list into PipelineAnalytics as well as
+  // PipelineBoard is what keeps the stats grid in sync with the filter.
+  const filteredDeals = useMemo(() => {
+    const term = pipelineSearch.trim().toLowerCase();
+    if (!term && pipelineTagFilterIds.length === 0) return deals;
+    return deals.filter((deal) => {
+      const matchesSearch =
+        !term ||
+        deal.contact?.name?.toLowerCase().includes(term) ||
+        deal.contact?.phone?.toLowerCase().includes(term);
+      const matchesTags =
+        pipelineTagFilterIds.length === 0 ||
+        (deal.contact?.tags ?? []).some((tag) => pipelineTagFilterIds.includes(tag.id));
+      return matchesSearch && matchesTags;
+    });
+  }, [deals, pipelineSearch, pipelineTagFilterIds]);
+
+  function toggleTagFilter(tagId: string) {
+    setPipelineTagFilterIds((prev) =>
+      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId],
+    );
+  }
+
   async function handleCreatePipeline() {
     const name = newPipelineName.trim();
     if (!name) return;
@@ -279,13 +409,33 @@ export default function PipelinesPage() {
       return;
     }
 
-    const stagesPayload = SPEC_DEFAULT_STAGES.map((s) => ({
-      pipeline_id: pipeline.id,
-      name: s.name,
-      color: s.color,
-      position: s.position,
-    }));
-    await supabase.from("pipeline_stages").insert(stagesPayload);
+    let stagesPayload: { pipeline_id: string; name: string; color: string; position: number }[];
+
+    if (newPipelineMode === "copy" && copyFromPipelineId) {
+      const sourceStages = await loadStages(copyFromPipelineId);
+      stagesPayload = [...sourceStages]
+        .sort((a, b) => a.position - b.position)
+        .map((s, i) => ({
+          pipeline_id: pipeline.id,
+          name: s.name,
+          color: s.color,
+          position: i,
+        }));
+    } else {
+      const template =
+        PIPELINE_TEMPLATES.find((tpl) => tpl.id === selectedTemplateId) ?? PIPELINE_TEMPLATES[0];
+      const stageNames = t.raw(`templates.${template.id}.stages`) as string[];
+      stagesPayload = template.colors.map((color, i) => ({
+        pipeline_id: pipeline.id,
+        name: stageNames[i] ?? `Stage ${i + 1}`,
+        color,
+        position: i,
+      }));
+    }
+
+    if (stagesPayload.length > 0) {
+      await supabase.from("pipeline_stages").insert(stagesPayload);
+    }
 
     setNewPipelineName("");
     setNewPipelineOpen(false);
@@ -412,37 +562,228 @@ export default function PipelinesPage() {
         </div>
       ) : (
         <>
-          <PipelineAnalytics stages={stages} deals={deals} />
+          {/* Search + tag filter — filters `deals` client-side (a
+              pipeline's deals are all loaded up front), and the filtered
+              list feeds both the analytics grid and the board so the
+              stats stay in sync with whatever's currently visible. */}
+          <div className="space-y-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="relative w-full max-w-sm">
+                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={pipelineSearch}
+                  onChange={(e) => setPipelineSearch(e.target.value)}
+                  placeholder={t("searchPlaceholder")}
+                  className="pl-8 bg-card border-border text-foreground placeholder:text-muted-foreground"
+                />
+              </div>
+
+              <Popover>
+                <PopoverTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      className="shrink-0 border-border text-muted-foreground hover:bg-muted"
+                    />
+                  }
+                >
+                  <Filter className="h-4 w-4" />
+                  {t("filterByTags")}
+                  {pipelineTagFilterIds.length > 0 && (
+                    <span className="ml-1 inline-flex items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+                      {pipelineTagFilterIds.length}
+                    </span>
+                  )}
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-64 p-0">
+                  <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                    <span className="text-sm font-medium text-popover-foreground">
+                      {t("filterByTags")}
+                    </span>
+                    {pipelineTagFilterIds.length > 0 && (
+                      <button
+                        onClick={() => setPipelineTagFilterIds([])}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        {t("clearAll")}
+                      </button>
+                    )}
+                  </div>
+                  {Object.values(tagsMap).length === 0 ? (
+                    <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+                      {t("noTagsYet")}
+                    </p>
+                  ) : (
+                    <div className="max-h-64 overflow-y-auto py-1">
+                      {Object.values(tagsMap)
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((tag) => (
+                          <label
+                            key={tag.id}
+                            className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 hover:bg-muted/50"
+                          >
+                            <Checkbox
+                              checked={pipelineTagFilterIds.includes(tag.id)}
+                              onCheckedChange={() => toggleTagFilter(tag.id)}
+                              aria-label={`Filter by ${tag.name}`}
+                            />
+                            <span
+                              className="size-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: tag.color }}
+                            />
+                            <span className="truncate text-sm text-popover-foreground">
+                              {tag.name}
+                            </span>
+                          </label>
+                        ))}
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {pipelineTagFilterIds.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {pipelineTagFilterIds.map((id) => {
+                  const tag = tagsMap[id];
+                  if (!tag) return null;
+                  return (
+                    <span
+                      key={id}
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                      style={{ backgroundColor: tag.color + "20", color: tag.color }}
+                    >
+                      {tag.name}
+                      <button
+                        onClick={() => toggleTagFilter(id)}
+                        aria-label={`Remove ${tag.name} filter`}
+                        className="hover:opacity-70"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+                <button
+                  onClick={() => setPipelineTagFilterIds([])}
+                  className="px-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  {t("clearAll")}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <PipelineAnalytics stages={stages} deals={filteredDeals} />
           <PipelineBoard
             stages={stages}
-            deals={deals}
+            deals={filteredDeals}
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
+            allTags={Object.values(tagsMap)}
+            onToggleContactTag={handleToggleContactTag}
           />
         </>
       )}
 
       {/* New Pipeline Dialog */}
       <Dialog open={newPipelineOpen} onOpenChange={setNewPipelineOpen}>
-        <DialogContent className="sm:max-w-sm bg-popover border-border">
+        <DialogContent className="sm:max-w-md bg-popover border-border max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-popover-foreground">{t("newPipeline")}</DialogTitle>
           </DialogHeader>
-          <div className="py-2">
-            <Label className="text-muted-foreground">{t("pipelineName")}</Label>
-            <Input
-              value={newPipelineName}
-              onChange={(e) => setNewPipelineName(e.target.value)}
-              placeholder={t("pipelineNamePlaceholder")}
-              className="mt-2 bg-muted border-border text-foreground"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreatePipeline();
-              }}
-            />
-            <p className="mt-2 text-xs text-muted-foreground">
-              {t("defaultStagesDesc")}
-            </p>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-muted-foreground">{t("pipelineName")}</Label>
+              <Input
+                value={newPipelineName}
+                onChange={(e) => setNewPipelineName(e.target.value)}
+                placeholder={t("pipelineNamePlaceholder")}
+                className="mt-2 bg-muted border-border text-foreground"
+              />
+            </div>
+
+            {/* Template vs. copy-an-existing-pipeline mode */}
+            <div className="flex gap-1 rounded-lg bg-muted p-1">
+              <button
+                type="button"
+                onClick={() => setNewPipelineMode("template")}
+                className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                  newPipelineMode === "template"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t("newPipelineTemplateTab")}
+              </button>
+              <button
+                type="button"
+                disabled={pipelines.length === 0}
+                onClick={() => {
+                  setNewPipelineMode("copy");
+                  setCopyFromPipelineId((prev) => prev || pipelines[0]?.id || "");
+                }}
+                className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  newPipelineMode === "copy"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t("newPipelineCopyTab")}
+              </button>
+            </div>
+
+            {newPipelineMode === "template" ? (
+              <div className="grid grid-cols-2 gap-2">
+                {PIPELINE_TEMPLATES.map((tpl) => {
+                  const stageNames = t.raw(`templates.${tpl.id}.stages`) as string[];
+                  const selected = tpl.id === selectedTemplateId;
+                  return (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() => setSelectedTemplateId(tpl.id)}
+                      className={`rounded-lg border p-2.5 text-left transition-colors ${
+                        selected
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-muted/50 hover:bg-muted"
+                      }`}
+                    >
+                      <p className="text-xs font-semibold text-foreground">
+                        {t(`templates.${tpl.id}.name`)}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                        {tpl.colors.map((color, i) => (
+                          <span
+                            key={i}
+                            className="rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+                            style={{ backgroundColor: `${color}20`, color }}
+                          >
+                            {stageNames[i]}
+                          </span>
+                        ))}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                <Label className="text-muted-foreground">{t("copyFromLabel")}</Label>
+                <select
+                  value={copyFromPipelineId}
+                  onChange={(e) => setCopyFromPipelineId(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
+                >
+                  {pipelines.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <DialogFooter className="bg-popover/50 border-border">
             <Button

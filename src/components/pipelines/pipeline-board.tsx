@@ -15,7 +15,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import type { Deal, PipelineStage } from "@/types";
+import type { Deal, PipelineStage, Tag } from "@/types";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -29,6 +29,10 @@ interface PipelineBoardProps {
   onDealMoved: (dealId: string, newStageId: string) => void;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  /** All tags available for the account — passed down to each card's
+   *  add-tag picker. */
+  allTags?: Tag[];
+  onToggleContactTag?: (contactId: string, tag: Tag, hasTag: boolean) => void;
 }
 
 export function PipelineBoard({
@@ -37,6 +41,8 @@ export function PipelineBoard({
   onDealMoved,
   onAddDeal,
   onEditDeal,
+  allTags,
+  onToggleContactTag,
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
@@ -231,6 +237,8 @@ export function PipelineBoard({
               currency={defaultCurrency}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
+              allTags={allTags}
+              onToggleContactTag={onToggleContactTag}
             />
           );
         })}
@@ -305,6 +313,8 @@ function StageColumn({
   currency,
   onAddDeal,
   onEditDeal,
+  allTags,
+  onToggleContactTag,
 }: {
   stage: PipelineStage;
   deals: Deal[];
@@ -312,6 +322,8 @@ function StageColumn({
   currency: string;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  allTags?: Tag[];
+  onToggleContactTag?: (contactId: string, tag: Tag, hasTag: boolean) => void;
 }) {
   const t = useTranslations("Pipelines.board");
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
@@ -380,6 +392,8 @@ function StageColumn({
                 deal={deal}
                 stage={stage}
                 onEdit={onEditDeal}
+                allTags={allTags}
+                onToggleContactTag={onToggleContactTag}
               />
             ))}
             {/* While a card is dragged over a column that already has
@@ -411,10 +425,14 @@ function DraggableDealCard({
   deal,
   stage,
   onEdit,
+  allTags,
+  onToggleContactTag,
 }: {
   deal: Deal;
   stage: PipelineStage;
   onEdit: (deal: Deal) => void;
+  allTags?: Tag[];
+  onToggleContactTag?: (contactId: string, tag: Tag, hasTag: boolean) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
@@ -438,7 +456,13 @@ function DraggableDealCard({
       {...attributes}
       style={{ opacity: isDragging ? 0.3 : 1, touchAction: "pan-y" }}
     >
-      <DealCard deal={deal} stage={stage} onEdit={onEdit} />
+      <DealCard
+        deal={deal}
+        stage={stage}
+        onEdit={onEdit}
+        allTags={allTags}
+        onToggleContactTag={onToggleContactTag}
+      />
     </div>
   );
 }

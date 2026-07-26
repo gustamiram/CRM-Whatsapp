@@ -569,7 +569,37 @@
       "toastFailedCreatePipeline": "Failed to create pipeline",
       "toastPipelineCreated": "Pipeline created",
       "toastNotLinkedToAccount": "Your profile is not linked to an account.",
-      "toastNoPipeline": "Create a pipeline first."
+      "toastNoPipeline": "Create a pipeline first.",
+      "newPipelineTemplateTab": "Template",
+      "newPipelineCopyTab": "Copy Pipeline",
+      "copyFromLabel": "Copy stages from",
+      "searchPlaceholder": "Search by name, phone, or tag...",
+      "filterByTags": "Filter by tags",
+      "clearAll": "Clear all",
+      "noTagsYet": "No tags yet.",
+      "toastFailedTagUpdate": "Failed to update tag",
+      "templates": {
+        "todoDoingDone": {
+          "name": "To Do, Doing, Done",
+          "stages": ["To Do", "Doing", "Done"]
+        },
+        "sales": {
+          "name": "Sales Pipeline",
+          "stages": ["New Lead", "Qualified", "Proposal Sent", "Negotiation", "Won"]
+        },
+        "support": {
+          "name": "Support",
+          "stages": ["New", "In Progress", "Waiting on Customer", "Resolved"]
+        },
+        "recruiting": {
+          "name": "Recruiting",
+          "stages": ["Applied", "Interview", "Offer", "Hired"]
+        },
+        "projectTasks": {
+          "name": "Project Tasks",
+          "stages": ["Backlog", "To Do", "In Progress", "In Review", "Done"]
+        }
+      }
     },
     "board": {
       "dropDealHere": "Drop a deal here",
@@ -579,7 +609,10 @@
       "noContact": "No contact",
       "won": "Won",
       "lost": "Lost",
-      "dragHandle": "Drag to move"
+      "dragHandle": "Drag to move",
+      "tags": "Tags",
+      "addTag": "Add tag",
+      "removeTag": "Remove \"{tag}\" tag"
     },
     "form": {
       "editDeal": "Edit Deal",
