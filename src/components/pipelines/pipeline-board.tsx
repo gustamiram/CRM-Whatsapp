@@ -95,11 +95,53 @@ export function PipelineBoard({
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("touchmove", handleTouchMove);
     pointerXRef.current = null;
+
+    // Restore by DELETING the inline declarations, never by writing an
+    // explicit value back: the class-driven values have to win again, and
+    // that includes `lg:snap-none` — reasserting "x mandatory" here would
+    // permanently re-enable snapping on desktop, where the layout expects
+    // it off.
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.style.scrollBehavior = "";
+      container.style.scrollSnapType = "";
+    }
   }, [handlePointerMove, handleTouchMove]);
 
   const startAutoScroll = useCallback(() => {
+    // Kept at 56 deliberately: on a ~344px-wide board the second visible
+    // column's centre already sits only ~26px clear of this zone, so widening
+    // it would start scrolling the board away while the user is simply
+    // reaching to drop on that column.
     const EDGE_ZONE_PX = 56;
     const MAX_SPEED_PX = 16;
+
+    // Two of this container's own CSS properties make a per-frame scroll
+    // nudge a no-op, which is the real reason the board never auto-scrolled:
+    //
+    //   1. `scroll-behavior: smooth` (set in the <style jsx> block below).
+    //      Per CSSOM-View, writing `scrollLeft` scrolls using the element's
+    //      COMPUTED scroll-behavior, so each frame starts a fresh animation
+    //      toward a target ~16px away and the read-back is a mid-animation
+    //      value — displacement never accumulates.
+    //   2. `scroll-snap-type: x mandatory` (from `snap-x snap-mandatory`,
+    //      switched off only at `lg`). Mandatory snap re-snaps to the nearest
+    //      column after every programmatic scroll, and a 16px delta against a
+    //      ~46vw column pitch always resolves to "the column we started on".
+    //      This is why the bug was mobile-only.
+    //
+    // Measured on a 376px viewport: 5 frames of `scrollLeft += 16` moved the
+    // board [0,0,0,0,0] as shipped, vs [16,33,49,65,82] with both neutralised.
+    //
+    // Applied as INLINE styles set synchronously here — in the same call
+    // stack that schedules the first rAF tick — rather than via a
+    // React-rendered `data-dragging` attribute, which could still be one
+    // render behind the loop it is meant to protect.
+    const scroller = scrollContainerRef.current;
+    if (scroller) {
+      scroller.style.scrollBehavior = "auto";
+      scroller.style.scrollSnapType = "none";
+    }
 
     window.addEventListener("pointermove", handlePointerMove, { passive: true });
     window.addEventListener("touchmove", handleTouchMove, { passive: true });
@@ -111,12 +153,18 @@ export function PipelineBoard({
         const rect = container.getBoundingClientRect();
         const distanceFromLeft = x - rect.left;
         const distanceFromRight = rect.right - x;
+        // `scrollBy(..., behavior: "instant")` rather than `scrollLeft += n`:
+        // the latter is a read-modify-write, and under `scroll-behavior:
+        // smooth` the read returns the pre-animation position — so every frame
+        // read the same value, wrote the same target, and the board never
+        // actually moved. `behavior: "instant"` opts out per call, so this
+        // keeps working even if the inline override above ever regresses.
         if (distanceFromLeft < EDGE_ZONE_PX) {
           const intensity = Math.min(1, Math.max(0, (EDGE_ZONE_PX - distanceFromLeft) / EDGE_ZONE_PX));
-          container.scrollLeft -= MAX_SPEED_PX * intensity;
+          container.scrollBy({ left: -MAX_SPEED_PX * intensity, behavior: "instant" });
         } else if (distanceFromRight < EDGE_ZONE_PX) {
           const intensity = Math.min(1, Math.max(0, (EDGE_ZONE_PX - distanceFromRight) / EDGE_ZONE_PX));
-          container.scrollLeft += MAX_SPEED_PX * intensity;
+          container.scrollBy({ left: MAX_SPEED_PX * intensity, behavior: "instant" });
         }
       }
       autoScrollFrameRef.current = requestAnimationFrame(tick);
@@ -289,6 +337,10 @@ export function PipelineBoard({
         .pipeline-scroll {
           scroll-behavior: smooth;
         }
+        /* NOTE: the scroll-behavior above, and the snap-mandatory utility on
+           the same element, are BOTH temporarily overridden with inline
+           styles for the duration of a drag (see startAutoScroll) — they
+           otherwise stop the JS auto-scroll from moving the board at all. */
         /* On touch devices the peek/snap layout already signals there's
            more to swipe, so the scrollbar is hidden for a clean look.
            On desktop (mouse) the board can overflow with many stages
