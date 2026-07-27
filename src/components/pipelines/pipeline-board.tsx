@@ -53,13 +53,27 @@ export function PipelineBoard({
   // edges — on a narrow mobile viewport that edge coincides with the
   // screen edge, making the built-in one unreliable on touch).
   //
-  // This version tracks the real, raw pointer position directly via a
-  // native `pointermove` listener on `window` — NOT dnd-kit's
-  // `active.rect.current` (an earlier version used that, but it's
-  // populated by dnd-kit in a layout effect and can read one tick
-  // stale relative to the actual finger position, which showed up as
-  // dragging toward one edge working while the other didn't). Pointer
-  // Events unify mouse/touch/pen, so one listener covers both.
+  // This version tracks the real, raw pointer position directly via
+  // native listeners on `window` — NOT dnd-kit's `active.rect.current`
+  // (an earlier version used that, but it's populated by dnd-kit in a
+  // layout effect and can read one tick stale relative to the actual
+  // finger position).
+  //
+  // A later version tracked only `pointermove`, reasoning that Pointer
+  // Events unify mouse/touch/pen. That was still wrong on real touch
+  // devices: dnd-kit's TouchSensor calls `event.preventDefault()` on
+  // `touchmove` once a drag is active (that's how it suppresses native
+  // scrolling for the gesture), and on at least some mobile browsers a
+  // prevented `touchmove` stops the browser from also dispatching the
+  // corresponding `pointermove` for that same touch — so the tracked
+  // position froze at wherever the finger started, and the board could
+  // only ever be dragged as far as the finger could physically reach
+  // on-screen without any scroll assistance kicking in (e.g. reaching
+  // the 2nd column but never the 3rd, which needs a scroll to reveal).
+  // Listening to `touchmove` directly — the exact event TouchSensor
+  // itself depends on to track the drag at all, so it's guaranteed to
+  // keep firing for as long as the drag visibly continues — sidesteps
+  // that gap entirely. `pointermove` is kept alongside for mouse drags.
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const pointerXRef = useRef<number | null>(null);
   const autoScrollFrameRef = useRef<number | null>(null);
@@ -68,20 +82,27 @@ export function PipelineBoard({
     pointerXRef.current = event.clientX;
   }, []);
 
+  const handleTouchMove = useCallback((event: TouchEvent) => {
+    const touch = event.touches[0];
+    if (touch) pointerXRef.current = touch.clientX;
+  }, []);
+
   const stopAutoScroll = useCallback(() => {
     if (autoScrollFrameRef.current != null) {
       cancelAnimationFrame(autoScrollFrameRef.current);
       autoScrollFrameRef.current = null;
     }
     window.removeEventListener("pointermove", handlePointerMove);
+    window.removeEventListener("touchmove", handleTouchMove);
     pointerXRef.current = null;
-  }, [handlePointerMove]);
+  }, [handlePointerMove, handleTouchMove]);
 
   const startAutoScroll = useCallback(() => {
     const EDGE_ZONE_PX = 56;
     const MAX_SPEED_PX = 16;
 
     window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    window.addEventListener("touchmove", handleTouchMove, { passive: true });
 
     function tick() {
       const container = scrollContainerRef.current;
@@ -102,7 +123,7 @@ export function PipelineBoard({
     }
 
     autoScrollFrameRef.current = requestAnimationFrame(tick);
-  }, [handlePointerMove]);
+  }, [handlePointerMove, handleTouchMove]);
 
   // Stop the rAF loop + listener if the component unmounts mid-drag.
   useEffect(() => stopAutoScroll, [stopAutoScroll]);
