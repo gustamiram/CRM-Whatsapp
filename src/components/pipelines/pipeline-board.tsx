@@ -38,8 +38,24 @@ interface PipelineBoardProps {
 // Auto-scroll tuning for the board (see startAutoScroll). Speeds are
 // px-per-SECOND, scaled by the real frame delta, so the board moves at the
 // same rate on a 60Hz and a 120Hz screen.
-const MAX_SPEED_PX_PER_SEC = 380;
-const MIN_SPEED_PX_PER_SEC = 80;
+//
+// These are the *starting* speeds; holding the finger in the edge zone
+// accelerates up to ACCEL_MAX_MULTIPLIER. Two failure modes bracket this,
+// both seen in the field:
+//   - Too fast (the original 16px/FRAME, i.e. 1920px/s on a 120Hz phone):
+//     the board slammed from end to end the moment the finger reached the
+//     edge, with no way to stop part-way.
+//   - Too slow (a flat 380px/s): crossing to a column two over needed a
+//     full second of holding perfectly still at the very edge, so in
+//     practice only the already-visible neighbour was ever reachable.
+// Ramping resolves the tension instead of trading one for the other: a
+// brief touch nudges by a fraction of a column, holding carries you across
+// the whole board in well under a second.
+const MAX_SPEED_PX_PER_SEC = 420;
+const MIN_SPEED_PX_PER_SEC = 140;
+/** Multiplier reached after ACCEL_RAMP_MS of unbroken dwell in the zone. */
+const ACCEL_MAX_MULTIPLIER = 2.6;
+const ACCEL_RAMP_MS = 650;
 // Mandatory scroll-snap is handed back only once the DragOverlay drop
 // animation (200ms) and the re-render that moves the card between columns
 // have both settled — restoring it mid-churn makes the board snap back to
@@ -90,6 +106,9 @@ export function PipelineBoard({
   const autoScrollFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
   const restoreStylesTimerRef = useRef<number | null>(null);
+  /** How long the pointer has sat inside an edge zone without leaving it —
+   *  drives the acceleration ramp. Reset whenever it leaves. */
+  const edgeDwellMsRef = useRef<number>(0);
 
   const handlePointerMove = useCallback((event: PointerEvent) => {
     pointerXRef.current = event.clientX;
@@ -191,6 +210,7 @@ export function PipelineBoard({
     window.addEventListener("touchmove", handleTouchMove, { passive: true });
 
     lastFrameTimeRef.current = performance.now();
+    edgeDwellMsRef.current = 0;
 
     function tick(now: number) {
       const container = scrollContainerRef.current;
@@ -217,11 +237,22 @@ export function PipelineBoard({
         }
         if (direction !== 0) {
           const intensity = Math.min(1, Math.max(0, depth));
+          // Accelerate the longer the finger stays put in the zone, so a
+          // quick touch nudges gently while a deliberate hold carries the
+          // board across several columns. Without this the speed has to be
+          // a single compromise number, and there isn't one that is both
+          // controllable up close and able to reach a column two over.
+          edgeDwellMsRef.current += dt * 1000;
+          const accel =
+            1 +
+            (ACCEL_MAX_MULTIPLIER - 1) *
+              Math.min(1, edgeDwellMsRef.current / ACCEL_RAMP_MS);
           // Floored so the outer edge of the zone still creeps instead of
           // sitting at 0px/s, which reads as "it isn't working".
           const speed =
-            MIN_SPEED_PX_PER_SEC +
-            (MAX_SPEED_PX_PER_SEC - MIN_SPEED_PX_PER_SEC) * intensity;
+            (MIN_SPEED_PX_PER_SEC +
+              (MAX_SPEED_PX_PER_SEC - MIN_SPEED_PX_PER_SEC) * intensity) *
+            accel;
           // `scrollBy(..., behavior: "instant")` rather than `scrollLeft += n`:
           // the latter is a read-modify-write, and under `scroll-behavior:
           // smooth` the read returns the pre-animation position — so every
@@ -229,6 +260,10 @@ export function PipelineBoard({
           // never actually moved. `behavior: "instant"` opts out per call, so
           // this keeps working even if the inline override ever regresses.
           container.scrollBy({ left: direction * speed * dt, behavior: "instant" });
+        } else {
+          // Left the zone — drop back to the gentle starting speed so the
+          // next approach isn't instantly at full tilt.
+          edgeDwellMsRef.current = 0;
         }
       }
       autoScrollFrameRef.current = requestAnimationFrame(tick);
