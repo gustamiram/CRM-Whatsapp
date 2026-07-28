@@ -12,6 +12,7 @@ import {
   useDroppable,
   useDraggable,
   closestCorners,
+  MeasuringStrategy,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -51,11 +52,11 @@ interface PipelineBoardProps {
 // Ramping resolves the tension instead of trading one for the other: a
 // brief touch nudges by a fraction of a column, holding carries you across
 // the whole board in well under a second.
-const MAX_SPEED_PX_PER_SEC = 420;
-const MIN_SPEED_PX_PER_SEC = 140;
+const MAX_SPEED_PX_PER_SEC = 260;
+const MIN_SPEED_PX_PER_SEC = 90;
 /** Multiplier reached after ACCEL_RAMP_MS of unbroken dwell in the zone. */
-const ACCEL_MAX_MULTIPLIER = 2.6;
-const ACCEL_RAMP_MS = 650;
+const ACCEL_MAX_MULTIPLIER = 2.3;
+const ACCEL_RAMP_MS = 900;
 // Mandatory scroll-snap is handed back only once the DragOverlay drop
 // animation (200ms) and the re-render that moves the card between columns
 // have both settled — restoring it mid-churn makes the board snap back to
@@ -382,6 +383,24 @@ export function PipelineBoard({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCorners}
+      // Measure the columns continuously instead of only once a drag is
+      // already under way (dnd-kit's default, MeasuringStrategy.WhileDragging).
+      //
+      // That default leaves a two-render hole at the start of every drag:
+      // dragStart sets the internal status to Initializing, but the rect map
+      // stays EMPTY until a later render flips it to Initialized. With no
+      // rects there are no collisions, so `over` is null — and handleDragEnd
+      // bails on `if (!over) return`, silently dropping the card back where
+      // it started. A deliberate press-and-drag outlives that window and
+      // works fine; a quick flick ends inside it and always "bounces back",
+      // which is exactly the difference reported from the phone.
+      //
+      // `Always` keeps the map populated from mount, so the very first frame
+      // of a drag already has valid drop targets. The rects dnd-kit stores
+      // are self-adjusting for container scroll (its Rect class exposes
+      // top/left/right/bottom as getters that subtract the live scroll
+      // delta), so this stays correct while the board auto-scrolls too.
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       // The board runs its own horizontal auto-scroll (see
       // startAutoScroll above) instead of dnd-kit's built-in one, which
       // is unreliable here on touch — disable it to avoid the two
