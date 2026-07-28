@@ -12,7 +12,6 @@ import {
   useDroppable,
   useDraggable,
   closestCorners,
-  MeasuringStrategy,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -383,24 +382,14 @@ export function PipelineBoard({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCorners}
-      // Measure the columns continuously instead of only once a drag is
-      // already under way (dnd-kit's default, MeasuringStrategy.WhileDragging).
-      //
-      // That default leaves a two-render hole at the start of every drag:
-      // dragStart sets the internal status to Initializing, but the rect map
-      // stays EMPTY until a later render flips it to Initialized. With no
-      // rects there are no collisions, so `over` is null — and handleDragEnd
-      // bails on `if (!over) return`, silently dropping the card back where
-      // it started. A deliberate press-and-drag outlives that window and
-      // works fine; a quick flick ends inside it and always "bounces back",
-      // which is exactly the difference reported from the phone.
-      //
-      // `Always` keeps the map populated from mount, so the very first frame
-      // of a drag already has valid drop targets. The rects dnd-kit stores
-      // are self-adjusting for container scroll (its Rect class exposes
-      // top/left/right/bottom as getters that subtract the live scroll
-      // delta), so this stays correct while the board auto-scrolls too.
-      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      // NOTE: dnd-kit's default droppable measuring (WhileDragging) is
+      // deliberately left in place. Switching it to MeasuringStrategy.Always
+      // was tried to close the empty-rect window at the very start of a drag
+      // and made things worse in the field — every drop, not just quick
+      // ones, started bouncing back to the origin column. Measuring from
+      // mount evidently caches column rects from a layout that no longer
+      // matches by the time a drag happens. Don't re-apply it without a way
+      // to test a real touch drag on a device.
       // The board runs its own horizontal auto-scroll (see
       // startAutoScroll above) instead of dnd-kit's built-in one, which
       // is unreliable here on touch — disable it to avoid the two
