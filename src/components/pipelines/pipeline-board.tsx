@@ -35,6 +35,17 @@ interface PipelineBoardProps {
   onToggleContactTag?: (contactId: string, tag: Tag, hasTag: boolean) => void;
 }
 
+// Auto-scroll tuning for the board (see startAutoScroll). Speeds are
+// px-per-SECOND, scaled by the real frame delta, so the board moves at the
+// same rate on a 60Hz and a 120Hz screen.
+const MAX_SPEED_PX_PER_SEC = 380;
+const MIN_SPEED_PX_PER_SEC = 80;
+// Mandatory scroll-snap is handed back only once the DragOverlay drop
+// animation (200ms) and the re-render that moves the card between columns
+// have both settled — restoring it mid-churn makes the board snap back to
+// the first column.
+const SNAP_RESTORE_DELAY_MS = 350;
+
 export function PipelineBoard({
   stages,
   deals,
@@ -77,6 +88,8 @@ export function PipelineBoard({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const pointerXRef = useRef<number | null>(null);
   const autoScrollFrameRef = useRef<number | null>(null);
+  const lastFrameTimeRef = useRef<number>(0);
+  const restoreStylesTimerRef = useRef<number | null>(null);
 
   const handlePointerMove = useCallback((event: PointerEvent) => {
     pointerXRef.current = event.clientX;
@@ -96,16 +109,41 @@ export function PipelineBoard({
     window.removeEventListener("touchmove", handleTouchMove);
     pointerXRef.current = null;
 
-    // Restore by DELETING the inline declarations, never by writing an
-    // explicit value back: the class-driven values have to win again, and
-    // that includes `lg:snap-none` — reasserting "x mandatory" here would
-    // permanently re-enable snapping on desktop, where the layout expects
-    // it off.
     const container = scrollContainerRef.current;
-    if (container) {
-      container.style.scrollBehavior = "";
-      container.style.scrollSnapType = "";
+    if (!container) return;
+
+    // Do NOT restore the overrides yet. Dropping kicks off two things at
+    // once: the 200ms DragOverlay drop animation, and the re-render that
+    // moves the card out of its old column into the new one. Handing
+    // `scroll-snap-type: x mandatory` back to the browser in the middle of
+    // that DOM churn makes it re-snap against a board whose children are
+    // being swapped, and it lands on the first column — with
+    // `scroll-behavior: smooth` also restored, that shows up as the board
+    // racing back to column 1 right after the drop.
+    //
+    // So: hold both overrides through the animation + re-render, then pin
+    // the scroll position back if it drifted (still under `behavior: auto`,
+    // so the correction is instant and invisible) and only then hand
+    // control back to CSS.
+    const keptScrollLeft = container.scrollLeft;
+    if (restoreStylesTimerRef.current != null) {
+      clearTimeout(restoreStylesTimerRef.current);
     }
+    restoreStylesTimerRef.current = window.setTimeout(() => {
+      restoreStylesTimerRef.current = null;
+      const el = scrollContainerRef.current;
+      if (!el) return;
+      if (Math.abs(el.scrollLeft - keptScrollLeft) > 1) {
+        el.scrollLeft = keptScrollLeft;
+      }
+      // Restore by DELETING the inline declarations, never by writing an
+      // explicit value back: the class-driven values have to win again, and
+      // that includes `lg:snap-none` — reasserting "x mandatory" here would
+      // permanently re-enable snapping on desktop, where the layout expects
+      // it off.
+      el.style.scrollBehavior = "";
+      el.style.scrollSnapType = "";
+    }, SNAP_RESTORE_DELAY_MS);
   }, [handlePointerMove, handleTouchMove]);
 
   const startAutoScroll = useCallback(() => {
@@ -114,7 +152,13 @@ export function PipelineBoard({
     // it would start scrolling the board away while the user is simply
     // reaching to drop on that column.
     const EDGE_ZONE_PX = 56;
-    const MAX_SPEED_PX = 16;
+
+    // A pending style-restore from a previous drag must not fire mid-drag
+    // and re-enable snapping underneath this one.
+    if (restoreStylesTimerRef.current != null) {
+      clearTimeout(restoreStylesTimerRef.current);
+      restoreStylesTimerRef.current = null;
+    }
 
     // Two of this container's own CSS properties make a per-frame scroll
     // nudge a no-op, which is the real reason the board never auto-scrolled:
@@ -146,25 +190,45 @@ export function PipelineBoard({
     window.addEventListener("pointermove", handlePointerMove, { passive: true });
     window.addEventListener("touchmove", handleTouchMove, { passive: true });
 
-    function tick() {
+    lastFrameTimeRef.current = performance.now();
+
+    function tick(now: number) {
       const container = scrollContainerRef.current;
       const x = pointerXRef.current;
+      // Speed is per SECOND, scaled by the real frame delta — a fixed
+      // per-frame budget runs at double speed on a 120Hz phone, and with
+      // only a few hundred px of scrollable width that slams the board to
+      // the far end the instant the finger touches the edge zone. `dt` is
+      // clamped so a stalled frame (GC, re-render) can't teleport it either.
+      const dt = Math.min(50, now - lastFrameTimeRef.current) / 1000;
+      lastFrameTimeRef.current = now;
       if (container && x != null) {
         const rect = container.getBoundingClientRect();
         const distanceFromLeft = x - rect.left;
         const distanceFromRight = rect.right - x;
-        // `scrollBy(..., behavior: "instant")` rather than `scrollLeft += n`:
-        // the latter is a read-modify-write, and under `scroll-behavior:
-        // smooth` the read returns the pre-animation position — so every frame
-        // read the same value, wrote the same target, and the board never
-        // actually moved. `behavior: "instant"` opts out per call, so this
-        // keeps working even if the inline override above ever regresses.
+        let direction = 0;
+        let depth = 0;
         if (distanceFromLeft < EDGE_ZONE_PX) {
-          const intensity = Math.min(1, Math.max(0, (EDGE_ZONE_PX - distanceFromLeft) / EDGE_ZONE_PX));
-          container.scrollBy({ left: -MAX_SPEED_PX * intensity, behavior: "instant" });
+          direction = -1;
+          depth = (EDGE_ZONE_PX - distanceFromLeft) / EDGE_ZONE_PX;
         } else if (distanceFromRight < EDGE_ZONE_PX) {
-          const intensity = Math.min(1, Math.max(0, (EDGE_ZONE_PX - distanceFromRight) / EDGE_ZONE_PX));
-          container.scrollBy({ left: MAX_SPEED_PX * intensity, behavior: "instant" });
+          direction = 1;
+          depth = (EDGE_ZONE_PX - distanceFromRight) / EDGE_ZONE_PX;
+        }
+        if (direction !== 0) {
+          const intensity = Math.min(1, Math.max(0, depth));
+          // Floored so the outer edge of the zone still creeps instead of
+          // sitting at 0px/s, which reads as "it isn't working".
+          const speed =
+            MIN_SPEED_PX_PER_SEC +
+            (MAX_SPEED_PX_PER_SEC - MIN_SPEED_PX_PER_SEC) * intensity;
+          // `scrollBy(..., behavior: "instant")` rather than `scrollLeft += n`:
+          // the latter is a read-modify-write, and under `scroll-behavior:
+          // smooth` the read returns the pre-animation position — so every
+          // frame read the same value, wrote the same target, and the board
+          // never actually moved. `behavior: "instant"` opts out per call, so
+          // this keeps working even if the inline override ever regresses.
+          container.scrollBy({ left: direction * speed * dt, behavior: "instant" });
         }
       }
       autoScrollFrameRef.current = requestAnimationFrame(tick);
@@ -173,8 +237,19 @@ export function PipelineBoard({
     autoScrollFrameRef.current = requestAnimationFrame(tick);
   }, [handlePointerMove, handleTouchMove]);
 
-  // Stop the rAF loop + listener if the component unmounts mid-drag.
-  useEffect(() => stopAutoScroll, [stopAutoScroll]);
+  // Stop the rAF loop + listeners if the component unmounts mid-drag, and
+  // drop the pending style-restore with it (it would otherwise fire against
+  // a detached node).
+  useEffect(
+    () => () => {
+      stopAutoScroll();
+      if (restoreStylesTimerRef.current != null) {
+        clearTimeout(restoreStylesTimerRef.current);
+        restoreStylesTimerRef.current = null;
+      }
+    },
+    [stopAutoScroll],
+  );
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
